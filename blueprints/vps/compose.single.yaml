@@ -1,0 +1,42 @@
+name: __APP_SLUG__
+
+services:
+  app:
+    image: ghcr.io/kanedasec/__APP_SLUG__-app:${IMAGE_TAG:?IMAGE_TAG must be set}
+    env_file:
+      - /opt/infra/__APP_SLUG__/app.env
+    expose:
+      - "__CONTAINER_PORT__"
+    healthcheck:
+      # Replace this command if the runtime image does not contain wget.
+      test:
+        - CMD
+        - wget
+        - -q
+        - --spider
+        - http://127.0.0.1:__CONTAINER_PORT____READINESS_PATH__
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    init: true
+    networks:
+      proxy:
+        aliases:
+          - __APP_SLUG__
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

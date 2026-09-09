@@ -1,0 +1,155 @@
+#!/bin/bash
+set -euo pipefail
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 022
+
+readonly APP_SLUG="__APP_SLUG__"
+readonly APP_DIR="/opt/infra/${APP_SLUG}"
+readonly COMPOSE_PATH="${APP_DIR}/compose.yaml"
+readonly APP_ENV="${APP_DIR}/app.env"
+readonly DEPLOYMENT_ENV="${APP_DIR}/deployment.env"
+readonly LOCK_FILE="/run/lock/deploy-${APP_SLUG}.lock"
+
+# List only application services that must be pulled and become healthy.
+PULL_SERVICES=(__PULL_SERVICES__)
+HEALTH_SERVICES=(__HEALTH_SERVICES__)
+
+# List GHCR repositories whose OCI revision label must match the requested SHA.
+IMAGE_REPOSITORIES=(__IMAGE_REPOSITORIES__)
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+if [[ $# -ne 1 ]]; then
+    die "usage: deploy-${APP_SLUG} sha-<40-character-commit-sha>"
+fi
+
+readonly REQUESTED_TAG="$1"
+
+if [[ ! "$REQUESTED_TAG" =~ ^sha-[0-9a-f]{40}$ ]]; then
+    die "invalid image tag"
+fi
+
+unset DOCKER_HOST DOCKER_CONTEXT COMPOSE_FILE COMPOSE_PROJECT_NAME
+
+exec 9>"$LOCK_FILE"
+if ! flock --nonblock 9; then
+    die "another ${APP_SLUG} deployment is running"
+fi
+
+cd "$APP_DIR"
+
+COMPOSE=(
+    /usr/bin/docker compose
+    --env-file "$APP_ENV"
+    --env-file "$DEPLOYMENT_ENV"
+    -f "$COMPOSE_PATH"
+)
+
+readonly EXPECTED_REVISION="${REQUESTED_TAG#sha-}"
+
+IMAGE_TAG="$REQUESTED_TAG" "${COMPOSE[@]}" config --quiet
+
+echo "Pulling ${REQUESTED_TAG}"
+IMAGE_TAG="$REQUESTED_TAG" "${COMPOSE[@]}" pull "${PULL_SERVICES[@]}"
+
+for repository in "${IMAGE_REPOSITORIES[@]}"; do
+    image="${repository}:${REQUESTED_TAG}"
+    revision="$(
+        /usr/bin/docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "$image"
+    )"
+
+    if [[ "$revision" != "$EXPECTED_REVISION" ]]; then
+        die "image revision label does not match requested commit: ${image}"
+    fi
+done
+
+previous_tag="$(sed -n 's/^IMAGE_TAG=//p' "$DEPLOYMENT_ENV")"
+
+if [[ ! "$previous_tag" =~ ^sha-[0-9a-f]{40}$ ]]; then
+    die "current deployment state is invalid"
+fi
+
+write_deployment_state() {
+    local tag="$1"
+    local temporary
+
+    temporary="$(mktemp --tmpdir="$APP_DIR" .deployment.env.XXXXXX)"
+    printf 'IMAGE_TAG=%s\n' "$tag" > "$temporary"
+    chown root:root "$temporary"
+    chmod 0644 "$temporary"
+    mv --force "$temporary" "$DEPLOYMENT_ENV"
+}
+
+state_changed=0
+
+rollback_on_error() {
+    local exit_status=$?
+
+    trap - ERR
+    set +e
+
+    if [[ "$state_changed" -eq 1 ]]; then
+        echo "Deployment failed; restoring ${previous_tag}" >&2
+        write_deployment_state "$previous_tag"
+        "${COMPOSE[@]}" pull "${PULL_SERVICES[@]}"
+        "${COMPOSE[@]}" up -d --no-build
+    fi
+
+    exit "$exit_status"
+}
+
+wait_for_health() {
+    local service="$1"
+    local container_id=""
+    local status="unknown"
+
+    for _ in {1..60}; do
+        container_id="$("${COMPOSE[@]}" ps -q "$service")"
+
+        if [[ -n "$container_id" ]]; then
+            status="$(
+                /usr/bin/docker inspect \
+                    --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                    "$container_id" 2>/dev/null || true
+            )"
+
+            case "$status" in
+                healthy)
+                    echo "${service} is healthy"
+                    return 0
+                    ;;
+                unhealthy|exited|dead)
+                    break
+                    ;;
+            esac
+        fi
+
+        sleep 2
+    done
+
+    echo "${service} failed health verification: ${status}" >&2
+    return 1
+}
+
+trap rollback_on_error ERR
+
+if [[ "$REQUESTED_TAG" != "$previous_tag" ]]; then
+    write_deployment_state "$REQUESTED_TAG"
+    state_changed=1
+fi
+
+"${COMPOSE[@]}" up -d --no-build
+
+for service in "${HEALTH_SERVICES[@]}"; do
+    wait_for_health "$service"
+done
+
+trap - ERR
+
+echo "Deployment completed: ${REQUESTED_TAG}"

@@ -1,0 +1,3 @@
+__PUBLIC_HOSTNAME__ {
+	reverse_proxy __PROXY_ALIAS__:__CONTAINER_PORT__
+}

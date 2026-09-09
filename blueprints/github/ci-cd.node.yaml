@@ -1,0 +1,66 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  standard-ci:
+    name: Standard CI
+    uses: kanedasec/platform-workflows/.github/workflows/ci-python-node.yaml@__PLATFORM_SHA__
+    with:
+      python_enabled: false
+      node_enabled: true
+      node_version: "22"
+      node_working_directory: .
+      node_lockfile: package-lock.json
+      node_run_tests: true
+      node_test_script: test
+      node_build_script: build
+
+  containers:
+    name: Application containers
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: standard-ci
+    permissions:
+      contents: read
+      packages: write
+    uses: kanedasec/platform-workflows/.github/workflows/container-publish.yaml@__PLATFORM_SHA__
+    with:
+      images: >-
+        [{"name":"app","context":".","dockerfile":"./Dockerfile"}]
+
+  deploy:
+    name: Development deployment
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: containers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: development
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy immutable containers
+        uses: kanedasec/platform-workflows/actions/tailscale-ssh-deploy@__PLATFORM_SHA__
+        with:
+          oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
+          ssh_private_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          target_host: ${{ vars.DEPLOY_HOST }}
+          target_user: ${{ vars.DEPLOY_USER }}
+          known_hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          deploy_command: ${{ vars.DEPLOY_COMMAND }}
+          image_tag: sha-${{ github.sha }}
+          public_url: ${{ vars.DEPLOY_URL }}
+          readiness_path: __READINESS_PATH__
