@@ -103,7 +103,7 @@ import sys
 target = Path(sys.argv[1])
 route = Path(sys.argv[2]).read_text(encoding="utf-8").strip()
 current = target.read_text(encoding="utf-8").rstrip()
-if "second-brain.kanedasec.com.br {" not in current:
+if "brain.kanedasec.com.br {" not in current:
     target.write_text(f"{current}\n\n{route}\n", encoding="utf-8")
 PY
 chown root:root "$CADDY_FILE"
