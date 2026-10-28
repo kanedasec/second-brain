@@ -892,3 +892,57 @@ class Repository:
                 detail["metadata"] = json.loads(detail.pop("metadata_json"))
         detail["neighbors"] = neighbors
         return detail
+
+    def export_graph(self) -> dict[str, Any] | None:
+        """Export the current graph (stored v2 graph unified with the v1
+        projection) as a schema-2.0 GraphBundle dict that re-imports cleanly."""
+        payload = self.graph_payload()
+        if not payload["nodes"]:
+            return None
+        with self.connect() as connection:
+            stored = {
+                row["id"]: row
+                for row in connection.execute(
+                    "SELECT id, source_type, source_label, source_excerpt, metadata_json"
+                    " FROM graph_nodes"
+                ).fetchall()
+            }
+        nodes: list[dict[str, Any]] = []
+        for item in payload["nodes"]:
+            node: dict[str, Any] = {
+                "id": item["id"],
+                "category": item["category"],
+                "label": item["label"],
+                "provenance": item.get("provenance") or "source",
+            }
+            if item.get("description"):
+                node["description"] = item["description"]
+            if item.get("occurred_at"):
+                node["occurred_at"] = item["occurred_at"]
+            row = stored.get(item["id"])
+            if row:
+                if row["source_label"]:
+                    source = {"type": row["source_type"] or "other", "label": row["source_label"]}
+                    if row["source_excerpt"]:
+                        source["excerpt"] = row["source_excerpt"]
+                    node["source"] = source
+                if row["metadata_json"]:
+                    node["metadata"] = json.loads(row["metadata_json"])
+            nodes.append(node)
+        edges = [
+            {
+                "source": edge["source"],
+                "target": edge["target"],
+                "label": edge["label"],
+                "directed": bool(edge.get("directed", True)),
+                "provenance": edge.get("provenance") or "source",
+            }
+            for edge in payload["edges"]
+        ]
+        return {
+            "schema_version": "2.0",
+            "generated_at": utc_iso(datetime.now(UTC)),
+            "generator": {"provider": "second-brain", "model": "export"},
+            "nodes": nodes,
+            "edges": edges,
+        }

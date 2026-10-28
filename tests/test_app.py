@@ -219,3 +219,27 @@ def test_prompt_library_page_and_downloads(client):
     assert '"schema_version"' in graph.text  # schema appended for the generator
 
     assert client.get("/prompts/nope.txt").status_code == 404
+
+
+def test_export_graph_roundtrips(client, example_graph):
+    import_graph(client, example_graph)
+    resp = client.get("/export/graph.json")
+    assert resp.status_code == 200
+    assert 'filename="second-brain-graph.json"' in resp.headers["content-disposition"]
+    data = resp.json()
+    assert data["schema_version"] == "2.0"
+    from app.schemas import GraphBundle
+    GraphBundle.model_validate(data)  # the export must re-import cleanly
+
+
+def test_export_graph_empty_is_404(client):
+    assert client.get("/export/graph.json").status_code == 404
+
+
+def test_presentation_prompt_available(client):
+    page = client.get("/prompt")
+    assert 'data-prompt-id="presentation"' in page.text
+    assert "Presentation builder" in page.text
+    txt = client.get("/prompts/presentation.txt")
+    assert txt.status_code == 200
+    assert "single-page html" in txt.text.lower()

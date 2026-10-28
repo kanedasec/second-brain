@@ -146,6 +146,14 @@ _PT_BR: dict[str, str] = {
         "Transforma um relatório preparado (ou fonte bruta) no JSON do grafo que o app importa.",
     "Outputs a written report": "Produz um relatório escrito",
     "Outputs graph JSON": "Produz JSON do grafo",
+    "Outputs a presentation": "Produz uma apresentação",
+    "Presentation": "Apresentação",
+    "Export the graph as JSON, then turn it into a shareable presentation (single-page HTML, PPTX, or PDF).":
+        "Exporte o grafo como JSON e transforme-o em uma apresentação compartilhável (HTML de página única, PPTX ou PDF).",
+    "Presentation builder": "Gerador de apresentação",
+    "Turn an exported graph into a single-page HTML, PPTX, or PDF presentation that explains the knowledge and how it connects.":
+        "Transforme um grafo exportado em uma apresentação em HTML de página única, PPTX ou PDF que explica o conhecimento e como ele se conecta.",
+    "Export JSON": "Exportar JSON",
     "Reveal prompt": "Revelar prompt",
     "Hide": "Ocultar",
     "Copy": "Copiar",

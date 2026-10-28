@@ -594,6 +594,7 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 .prompt-output { font-family: var(--mono); font-size: .56rem; text-transform: uppercase; letter-spacing: .1em; padding: 4px 9px; border: 1px solid var(--line-dark); white-space: nowrap; }
 .prompt-output-report { color: var(--magenta); border-color: rgb(255 46 151 / 35%); }
 .prompt-output-graph { color: var(--blue); border-color: rgb(0 230 255 / 35%); }
+.prompt-output-presentation { color: var(--yellow); border-color: rgb(252 237 26 / 35%); }
 .prompt-card > p { color: var(--muted); margin: 12px 0 18px; max-width: 74ch; }
 .prompt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .prompt-reveal { margin-top: 18px; border-top: 1px solid var(--line); }

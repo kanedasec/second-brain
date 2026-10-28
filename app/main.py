@@ -345,6 +345,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def graph_data():
         return JSONResponse(repository.graph_payload())
 
+    @app.get("/export/graph.json")
+    async def export_graph():
+        bundle = repository.export_graph()
+        if bundle is None:
+            raise HTTPException(status_code=404, detail="no graph to export")
+        GraphBundle.model_validate(bundle)  # guard: the export must re-import
+        return Response(
+            json.dumps(bundle, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="second-brain-graph.json"'},
+        )
+
     @app.get("/nodes/{node_id}", response_class=JSONResponse)
     async def node_data(node_id: str):
         detail = repository.node_detail(node_id)

@@ -4,7 +4,8 @@
 <article class="prompt-card" data-prompt-id="{{ p.id }}">
   <div class="prompt-card-head">
     <h3>{{ t(p.title) }}</h3>
-    <span class="prompt-output prompt-output-{{ p.output }}">{{ t("Outputs a written report") if p.output == 'report' else t("Outputs graph JSON") }}</span>
+    {% set out_labels = {'report': t('Outputs a written report'), 'graph': t('Outputs graph JSON'), 'presentation': t('Outputs a presentation')} %}
+    <span class="prompt-output prompt-output-{{ p.output }}">{{ out_labels[p.output] }}</span>
   </div>
   <p>{{ t(p.description) }}</p>
   <div class="prompt-actions">
@@ -38,6 +39,14 @@
       <p class="prompt-group-note">{{ t("Turns a prepared report (or raw source) into the graph JSON the app imports.") }}</p>
       <div class="prompt-cards">
         {% for p in prompts if p.group == 'schema' %}{{ prompt_card(p) }}{% endfor %}
+      </div>
+    </section>
+
+    <section class="prompt-group">
+      <div class="section-heading"><span>03</span><h2>{{ t("Presentation") }}</h2></div>
+      <p class="prompt-group-note">{{ t("Export the graph as JSON, then turn it into a shareable presentation (single-page HTML, PPTX, or PDF).") }}</p>
+      <div class="prompt-cards">
+        {% for p in prompts if p.group == 'present' %}{{ prompt_card(p) }}{% endfor %}
       </div>
     </section>
   </div>

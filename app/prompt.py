@@ -88,6 +88,17 @@ PROMPT_LIBRARY = [
         "getter": complete_graph_prompt,
         "schema_url": "/graph-schema.json",
     },
+    {
+        "id": "presentation",
+        "group": "present",
+        "output": "presentation",
+        "title": "Presentation builder",
+        "description": (
+            "Turn an exported graph into a single-page HTML, PPTX, or PDF presentation "
+            "that explains the knowledge and how it connects."
+        ),
+        "getter": lambda: _read("presentation-prompt.md"),
+    },
 ]
 
 _PROMPTS_BY_ID = {item["id"]: item for item in PROMPT_LIBRARY}
