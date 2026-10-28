@@ -41,7 +41,7 @@ The repository consumes `kanedasec/platform-workflows` as the central trust root
 1. Pin every external action and reusable workflow to a full 40-character commit SHA.
 2. Never use `pull_request_target`, self-hosted runners, or checkout credentials persisted into the worktree.
 3. Keep pull requests unable to publish, deploy, or receive deployment secrets.
-4. Keep the SGP Manager security path fail closed. Outages, malformed responses, stale decisions, or authentication failures block promotion; they never authorize a fallback deploy.
+4. Treat SGP Manager only as a bypass resolver. If it is unavailable or its response cannot be trusted, run every registered guardrail and block low, medium, high, and critical findings with no bypasses. Clean evidence may continue; scanner or artifact failures still block promotion.
 5. Give `packages: write` only to the container publishing job.
 6. Publish and deploy only `sha-<full-commit>` images, never mutable tags.
 7. Do not expose Docker or arbitrary shell inputs through reusable workflows.

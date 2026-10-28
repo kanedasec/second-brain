@@ -38,6 +38,7 @@ The interface is an editorial “memory atlas”: warm paper, dark ink, one elec
 6. Production knowledge routes require authentication; readiness remains content-free and public.
 7. Do not log uploaded content, search text, credentials, or private memory data.
 8. Add tests for schema, persistence, security boundaries, and retention when changing those areas.
+9. SGP Manager resolves bypasses but is not a deployment availability dependency. When it is unavailable, all registered guardrails run and every finding severity blocks with no bypasses; only clean, valid scanner evidence may continue.
 
 ## Development commands
 

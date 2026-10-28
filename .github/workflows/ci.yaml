@@ -19,7 +19,7 @@ jobs:
     name: Standard CI
     permissions:
       contents: read
-    uses: kanedasec/platform-workflows/.github/workflows/ci-python-node.yaml@982b33599120d5a306c2878c57164aeead6f674e
+    uses: kanedasec/platform-workflows/.github/workflows/ci-python-node.yaml@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
     with:
       python_enabled: true
       python_version: "3.13"
@@ -38,7 +38,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: kanedasec/platform-workflows/.github/workflows/container-publish.yaml@982b33599120d5a306c2878c57164aeead6f674e
+    uses: kanedasec/platform-workflows/.github/workflows/container-publish.yaml@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
     with:
       images: >-
         [
@@ -57,7 +57,7 @@ jobs:
       contents: read
     steps:
       - name: Deploy immutable application image
-        uses: kanedasec/platform-workflows/actions/tailscale-ssh-deploy@982b33599120d5a306c2878c57164aeead6f674e
+        uses: kanedasec/platform-workflows/actions/tailscale-ssh-deploy@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
         with:
           oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}

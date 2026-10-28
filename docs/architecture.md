@@ -52,8 +52,9 @@ The backup service calculates the next Friday at 23:55 in the configured timezon
 ```text
 pull request
   -> standard CI
-  -> selected full-repository scanners
-  -> SGP Manager policy decision (fail closed when unavailable)
+  -> every registered full-repository scanner
+  -> SGP Manager bypass resolution
+     OR strict all-severity blocking with no bypasses when unavailable
   -> protected main
   -> immutable GHCR sha-<commit> image
   -> protected deployment environment

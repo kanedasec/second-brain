@@ -4,12 +4,12 @@ Follow this in phases. Do not enable automated deployment until the application 
 
 ## 1. Repository controls
 
-Create a protected `security-policy` environment containing the `SGP_MANAGER_API_KEY` secret. When SGP Manager is offline, `.github/workflows/security.yaml` returns a clear fail-closed result; wait for service recovery rather than bypassing the policy check.
+Create a protected `security-policy` environment containing the `SGP_MANAGER_API_KEY` secret. When SGP Manager is offline or cannot return a trusted policy, `.github/workflows/security.yaml` runs every registered scanner and enforces every severity with no bypasses. Clean reports continue; findings, scanner failures, and invalid evidence block promotion.
 
 Protect `main` with required pull requests, current branches, resolved conversations, and these checks:
 
 - workflow validation and backend tests;
-- every selected Semgrep, Gitleaks, and Trivy job;
+- every registered Semgrep, Gitleaks, and Trivy job;
 - `Security policy (SGP Manager)`.
 
 The first publishing PR may temporarily omit the `deploy` job if the runtime has not yet been bootstrapped.

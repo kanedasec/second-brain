@@ -54,9 +54,9 @@ Production refuses to start unless `SECOND_BRAIN_USERNAME` and a password of at 
 
 ## Deployment
 
-The repository calls `kanedasec/platform-workflows` at immutable commit `982b33599120d5a306c2878c57164aeead6f674e` for Python CI, container publishing, SGP policy evaluation, and Tailscale/SSH deployment. Runtime assets are in [`deploy/`](deploy/), and the full operator checklist is in [`docs/onboarding.md`](docs/onboarding.md).
+The repository calls `kanedasec/platform-workflows` at immutable commit `2358c3996ce347e42ee8dfd09e2cba68a74a30bf` for Python CI, container publishing, SGP policy evaluation, and Tailscale/SSH deployment. Runtime assets are in [`deploy/`](deploy/), and the full operator checklist is in [`docs/onboarding.md`](docs/onboarding.md).
 
-If SGP Manager is unavailable, the security workflow intentionally fails closed with a “failsafe engaged” message. No container is authorized for deployment until centralized policy evaluation is available again.
+If SGP Manager is unavailable, every registered scanner still runs and low, medium, high, and critical findings all block with no bypasses. Clean reports allow delivery to continue; failed scanners and missing or malformed evidence still block publishing and deployment.
 
 ## Architecture
 
