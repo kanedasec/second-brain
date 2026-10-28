@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI and deployment
 
 on:
   pull_request:
@@ -11,43 +11,43 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-cd-${{ github.event.pull_request.number || github.ref }}
+  group: second-brain-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   standard-ci:
     name: Standard CI
-    uses: kanedasec/platform-workflows/.github/workflows/ci-python-node.yaml@__PLATFORM_SHA__
+    permissions:
+      contents: read
+    uses: kanedasec/platform-workflows/.github/workflows/ci-python-node.yaml@982b33599120d5a306c2878c57164aeead6f674e
     with:
-      python_version: "3.12"
-      python_working_directory: backend
+      python_enabled: true
+      python_version: "3.13"
+      python_working_directory: .
       python_requirements_file: requirements-dev.txt
       python_cache_dependency_path: |
-        backend/requirements.txt
-        backend/requirements-dev.txt
+        requirements.txt
+        requirements-dev.txt
       python_test_path: tests
-      node_version: "22"
-      node_working_directory: frontend
-      node_lockfile: frontend/package-lock.json
-      node_run_tests: true
-      node_test_script: test
-      node_build_script: build
+      node_enabled: false
 
   containers:
-    name: Application containers
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    name: Application container
+    if: github.event_name != 'pull_request'
     needs: standard-ci
     permissions:
       contents: read
       packages: write
-    uses: kanedasec/platform-workflows/.github/workflows/container-publish.yaml@__PLATFORM_SHA__
+    uses: kanedasec/platform-workflows/.github/workflows/container-publish.yaml@982b33599120d5a306c2878c57164aeead6f674e
     with:
       images: >-
-        [{"name":"backend","context":"./backend","dockerfile":"./backend/Dockerfile"},{"name":"frontend","context":"./frontend","dockerfile":"./frontend/Dockerfile"}]
+        [
+          {"name":"app","context":".","dockerfile":"./Dockerfile"}
+        ]
 
   deploy:
     name: Development deployment
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request'
     needs: containers
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -56,8 +56,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Deploy immutable containers
-        uses: kanedasec/platform-workflows/actions/tailscale-ssh-deploy@__PLATFORM_SHA__
+      - name: Deploy immutable application image
+        uses: kanedasec/platform-workflows/actions/tailscale-ssh-deploy@982b33599120d5a306c2878c57164aeead6f674e
         with:
           oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
@@ -68,4 +68,5 @@ jobs:
           deploy_command: ${{ vars.DEPLOY_COMMAND }}
           image_tag: sha-${{ github.sha }}
           public_url: ${{ vars.DEPLOY_URL }}
-          readiness_path: __READINESS_PATH__
+          root_expected_status: "401"
+          readiness_path: /ready

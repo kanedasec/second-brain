@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}AI ingestion prompt · Second Brain{% endblock %}
+{% block content %}
+<section class="prompt-page reveal">
+  <header class="page-hero compact-hero">
+    <div class="eyebrow"><span>04</span> AI handoff</div>
+    <h1>A contract against<br><em>invented memory.</em></h1>
+    <p class="lede">This prompt separates source facts, general-knowledge explanations, explicit tasks, missing knowledge, and AI advice.</p>
+  </header>
+  <div class="prompt-toolbar">
+    <div><span class="status-dot"></span> Schema v1.0 · ready to paste</div>
+    <div class="button-group"><button id="copy-prompt" class="button button-dark" type="button" data-copy-target="prompt-text">Copy prompt</button><a class="button button-ghost" href="/prompt.txt">Download .txt</a><a class="button button-ghost" href="/schema.json">JSON Schema</a></div>
+  </div>
+  <div class="prompt-window">
+    <div class="prompt-gutter" aria-hidden="true">PROMPT<br>SCHEMA<br>SOURCE</div>
+    <pre id="prompt-text"><code>{{ prompt }}</code></pre>
+  </div>
+</section>
+{% endblock %}

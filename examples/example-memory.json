@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-10-28T19:00:00-03:00",
+  "generator": {
+    "provider": "example-ai",
+    "model": "example-model"
+  },
+  "source": {
+    "type": "briefing",
+    "label": "Fictional observatory planning note",
+    "description": "Synthetic data for local testing"
+  },
+  "memories": [
+    {
+      "id": "2026-10-28-observatory-planning-01",
+      "title": "Observatory sensor review",
+      "summary": "The team agreed to review the fictional observatory sensor inventory before the next planning session.",
+      "occurred_at": "2026-10-28T14:30:00-03:00",
+      "context": "A synthetic planning briefing used to demonstrate the memory format without personal data.",
+      "people": ["Morgan", "Riley"],
+      "topics": [
+        {
+          "name": "Observatory project",
+          "context": "Sensor inventory and planning readiness"
+        },
+        {
+          "name": "Environmental monitoring",
+          "context": "The briefing mentioned a LoRaWAN sensor gateway"
+        }
+      ],
+      "facts": [
+        {
+          "statement": "The current sensor inventory has not been verified.",
+          "evidence": "The note says the inventory still needs to be checked.",
+          "confidence": "explicit"
+        }
+      ],
+      "entities": [
+        {
+          "name": "LoRaWAN",
+          "type": "architecture",
+          "mentioned_as": "A LoRaWAN gateway was mentioned for the observatory sensors.",
+          "evidence": "The note refers to the observatory's LoRaWAN gateway.",
+          "explanation": "LoRaWAN is a low-power wide-area networking protocol commonly used to connect battery-powered sensors over long distances.",
+          "explanation_source": "general_knowledge"
+        }
+      ],
+      "actions": [
+        {
+          "title": "Review the observatory sensor inventory",
+          "status": "open",
+          "due_at": "2026-11-06T17:00:00-03:00",
+          "owner": "Morgan",
+          "evidence": "Morgan agreed to review the inventory by 6 November at 17:00.",
+          "priority": "high"
+        },
+        {
+          "title": "Confirm gateway firmware version",
+          "status": "open",
+          "due_at": null,
+          "owner": null,
+          "evidence": "The note lists firmware confirmation as an open task without an owner or date.",
+          "priority": "medium"
+        }
+      ],
+      "knowledge_gaps": [
+        {
+          "question": "Which firmware version is installed on the gateway?",
+          "why_it_matters": "The version is needed before compatibility can be assessed.",
+          "evidence": "The briefing says the installed firmware version is unknown."
+        }
+      ],
+      "recommendations": [
+        {
+          "advice": "Record the gateway model and firmware together during the inventory review.",
+          "rationale": "Keeping both values together should make later compatibility checks easier.",
+          "related_topic": "Environmental monitoring",
+          "ai_generated": true
+        }
+      ]
+    }
+  ]
+}
