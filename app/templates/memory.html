@@ -36,7 +36,7 @@
           {% for action in memory.actions %}
           <article class="action-item status-{{ action.status }}">
             <span class="checkbox" aria-hidden="true">{% if action.status == 'done' %}✓{% endif %}</span>
-            <div><h3>{{ action.title }}</h3><p>{{ action.owner or t("Owner not stated") }} · {{ action.due_at|display_due }}</p><small>{{ action.priority }} {{ t("priority") }} · {{ action.status }}</small></div>
+            <div><h3>{{ action.title }}</h3><p>{{ action.owner or t("Owner not stated") }} · {{ action.due_at|display_due or t("Unscheduled") }}</p><small>{{ action.priority }} {{ t("priority") }} · {{ action.status }}</small></div>
           </article>
           {% endfor %}
         </div>

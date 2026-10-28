@@ -97,7 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     templates.env.filters["display_datetime"] = display_datetime
     templates.env.filters["display_due"] = lambda value: (
-        display_datetime(value) if value else "Unscheduled"
+        display_datetime(value) if value else ""
     )
 
     @app.middleware("http")

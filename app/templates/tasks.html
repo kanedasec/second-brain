@@ -18,7 +18,7 @@
           <div class="priority priority-{{ action.priority }}">{{ action.priority }}</div>
           <h3>{{ action.title }}</h3>
           <p>{{ action.owner or t("Owner not stated") }}</p>
-          <time>{{ action.due_at|display_due }}</time>
+          <time>{{ action.due_at|display_due or t("Unscheduled") }}</time>
           <a href="/memories/{{ action.memory_id }}">{{ action.memory_title }} ↗</a>
         </article>
         {% else %}<p class="quiet">{{ t("Nothing here.") }}</p>{% endfor %}

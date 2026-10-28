@@ -23,6 +23,8 @@
     <div id="graph-canvas" class="graph-canvas" role="application"
          aria-label="{{ t('Interactive force-directed knowledge graph. Drag to move nodes, scroll to zoom, click a node for details.') }}"></div>
 
+    <div id="graph-loading" class="graph-loading" aria-hidden="true"><span></span><span></span><span></span></div>
+
     <div class="graph-overlay graph-legend" aria-hidden="false">
       <p class="graph-legend-title">{{ t("Categories") }}</p>
       <ul id="graph-legend-list" class="graph-legend-list"></ul>

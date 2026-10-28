@@ -641,3 +641,18 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 
 /* The `hidden` attribute must win over component display rules. */
 [hidden] { display: none !important; }
+
+/* Neon scrollbars (Phase 4 polish) */
+* { scrollbar-width: thin; scrollbar-color: #295a74 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--blue), #176a82); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--blue); }
+
+/* Graph loading indicator */
+.graph-loading { position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; display: flex; gap: 9px; }
+.graph-loading span { width: 11px; height: 11px; border-radius: 50%; background: var(--blue); box-shadow: var(--glow-cyan); animation: graphpulse 1s ease-in-out infinite; }
+.graph-loading span:nth-child(2) { background: var(--magenta); box-shadow: var(--glow-magenta); animation-delay: .15s; }
+.graph-loading span:nth-child(3) { background: var(--yellow); box-shadow: var(--glow-yellow); animation-delay: .3s; }
+@keyframes graphpulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .graph-loading span { animation: none; opacity: .8; } }

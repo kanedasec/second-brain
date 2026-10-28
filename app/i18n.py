@@ -85,6 +85,7 @@ _PT_BR: dict[str, str] = {
     "Later": "Mais tarde",
     "Beyond the next two weeks": "Além das próximas duas semanas",
     "Owner not stated": "Responsável não informado",
+    "Unscheduled": "Sem agendamento",
     "Nothing here.": "Nada aqui.",
     # Import
     "Import desk": "Mesa de importação",

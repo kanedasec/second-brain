@@ -12,6 +12,7 @@
   const aiToggle = document.getElementById('graph-ai-toggle');
   const resetBtn = document.getElementById('graph-reset');
   const showAllBtn = document.getElementById('graph-show-all');
+  const loadingEl = document.getElementById('graph-loading');
 
   const PROGRESSIVE_CAP = 400; // nodes shown before progressive disclosure kicks in
 
@@ -30,6 +31,11 @@
   const INK = '#e9ecff';
   const ACCENT = '#fced1a';
   const colorFor = (node) => COLORS[node.category] || COLORS.other;
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const CAM = reduceMotion ? 0 : 600; // camera transition duration
+  const radiusFor = (node) =>
+    Math.min(Math.max(4 + Math.sqrt(node.__degree || 0) * 1.5, 4), 13);
 
   // UI strings (chrome only — never node content)
   const LANG = document.documentElement.lang || 'en';
@@ -62,6 +68,8 @@
   // --- exploration state --------------------------------------------------
   let selectedId = null;
   let connected = new Set();
+  let hoverId = null;
+  let hoverSet = new Set();
   let searchTerm = '';
   const hiddenCats = new Set();
   let showAi = true;
@@ -110,20 +118,27 @@
       const dimSearch = searchTerm && !matches(node);
       const faded = dimSel || dimSearch;
       const hit = searchTerm && matches(node);
-      const radius = node.id === selectedId ? 7 : 5;
-      ctx.globalAlpha = faded ? 0.18 : 1;
+      const emphasised = node.id === selectedId || node.id === hoverId;
+      const color = colorFor(node);
+      const radius = radiusFor(node) + (emphasised ? 2 : 0);
+      ctx.globalAlpha = faded ? 0.16 : 1;
 
+      // Neon glow
+      ctx.shadowColor = color;
+      ctx.shadowBlur = faded ? 0 : (emphasised ? 18 : 10);
       ctx.beginPath();
       ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
-      ctx.fillStyle = colorFor(node);
+      ctx.fillStyle = color;
       ctx.fill();
-      if (node.id === selectedId || hit) {
-        ctx.lineWidth = (node.id === selectedId ? 2 : 2.5) / scale;
-        ctx.strokeStyle = node.id === selectedId ? INK : ACCENT;
+      ctx.shadowBlur = 0;
+
+      if (emphasised || hit) {
+        ctx.lineWidth = (emphasised ? 2 : 2.5) / scale;
+        ctx.strokeStyle = node.id === selectedId ? INK : (hit ? ACCENT : color);
         ctx.stroke();
       }
 
-      if (scale > 1.4 || node.id === selectedId || connected.has(node.id) || hit) {
+      if (scale > 1.4 || emphasised || connected.has(node.id) || hoverSet.has(node.id) || hit) {
         const fontSize = Math.max(11 / scale, 2.5);
         ctx.font = `${fontSize}px Inter, system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
@@ -136,21 +151,41 @@
     .nodePointerAreaPaint((node, color, ctx) => {
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(node.x, node.y, 6, 0, 2 * Math.PI);
+      ctx.arc(node.x, node.y, radiusFor(node) + 2, 0, 2 * Math.PI);
       ctx.fill();
     })
     .linkColor((link) => {
-      const active = selectedId
-        && (idOf(link.source) === selectedId || idOf(link.target) === selectedId);
-      if (active) return 'rgba(0,230,255,0.85)';
+      const s = idOf(link.source);
+      const t = idOf(link.target);
+      const onSel = selectedId && (s === selectedId || t === selectedId);
+      const onHover = hoverId && (s === hoverId || t === hoverId);
+      if (onSel || onHover) return 'rgba(0,230,255,0.9)';
       if (selectedId || searchTerm) return 'rgba(233,236,255,0.05)';
       return link.provenance === 'ai_inferred' ? 'rgba(255,46,151,0.42)' : 'rgba(233,236,255,0.2)';
     })
+    .linkWidth((link) => {
+      const s = idOf(link.source);
+      const t = idOf(link.target);
+      return (hoverId && (s === hoverId || t === hoverId)) ? 2 : 1;
+    })
     .linkLineDash((link) => (link.provenance === 'ai_inferred' ? [3, 3] : null))
+    .onNodeHover((node) => {
+      hoverId = node ? node.id : null;
+      hoverSet = new Set();
+      if (node) {
+        for (const link of Graph.graphData().links) {
+          const s = idOf(link.source);
+          const t = idOf(link.target);
+          if (s === node.id) hoverSet.add(t);
+          else if (t === node.id) hoverSet.add(s);
+        }
+      }
+      mount.style.cursor = node ? 'pointer' : 'grab';
+    })
     .onNodeClick((node) => {
       selectNode(node.id);
-      Graph.centerAt(node.x, node.y, 600);
-      Graph.zoom(Math.max(Graph.zoom(), 2.2), 600);
+      Graph.centerAt(node.x, node.y, CAM);
+      Graph.zoom(Math.max(Graph.zoom(), 2.2), CAM);
     })
     .onBackgroundClick(() => clearSelection());
 
@@ -253,9 +288,9 @@
     }
     refresh();
     if (nodeId) {
-      Graph.zoomToFit(500, 70, (n) => n.id === nodeId || isolateSet.has(n.id));
+      Graph.zoomToFit(CAM, 70, (n) => n.id === nodeId || isolateSet.has(n.id));
     } else {
-      Graph.zoomToFit(500, 60);
+      Graph.zoomToFit(CAM, 60);
     }
   }
 
@@ -304,8 +339,8 @@
         const target = Graph.graphData().nodes.find((n) => n.id === btn.dataset.id);
         selectNode(btn.dataset.id);
         if (target && target.x != null) {
-          Graph.centerAt(target.x, target.y, 600);
-          Graph.zoom(Math.max(Graph.zoom(), 2.2), 600);
+          Graph.centerAt(target.x, target.y, CAM);
+          Graph.zoom(Math.max(Graph.zoom(), 2.2), CAM);
         }
       });
     });
@@ -330,7 +365,7 @@
     if (e.key === 'Enter' && searchTerm) {
       e.preventDefault();
       const hits = Graph.graphData().nodes.filter((n) => nodeVisible(n) && matches(n));
-      if (hits.length) Graph.zoomToFit(600, 80, (n) => nodeVisible(n) && matches(n));
+      if (hits.length) Graph.zoomToFit(CAM, 80, (n) => nodeVisible(n) && matches(n));
     }
   });
 
@@ -353,7 +388,7 @@
     updateProgButton();
     refresh();
     updateSearchCount();
-    Graph.zoomToFit(500, 60);
+    Graph.zoomToFit(CAM, 60);
   });
 
   function updateProgButton() {
@@ -364,7 +399,7 @@
     showAllNodes = true;
     updateProgButton();
     refresh();
-    Graph.zoomToFit(600, 60);
+    Graph.zoomToFit(CAM, 60);
   });
 
   panelClose.addEventListener('click', clearSelection);
@@ -372,12 +407,11 @@
     if (e.key === 'Escape' && !panel.hidden) clearSelection();
   });
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
   fetch('/graph.json')
     .then((res) => res.json())
     .then((data) => {
       sizeToContainer();
+      if (loadingEl) loadingEl.hidden = true;
       if (!data.nodes.length) {
         emptyNote.hidden = false;
         return;
@@ -413,6 +447,7 @@
       setTimeout(() => { if (!didFit) { Graph.zoomToFit(500, 60); didFit = true; } }, 1500);
     })
     .catch(() => {
+      if (loadingEl) loadingEl.hidden = true;
       emptyNote.hidden = false;
       emptyNote.textContent = tr('Could not load the graph.');
     });
