@@ -159,3 +159,11 @@ def test_graph_prompt_and_schema_are_retrievable(client):
     schema = client.get("/graph-schema.json")
     assert schema.status_code == 200
     assert schema.json()["properties"]["schema_version"]["const"] == "2.0"
+
+
+def test_graph_page_loads_viewer(client):
+    response = client.get("/graph")
+    assert response.status_code == 200
+    assert "/static/vendor/force-graph.min.js" in response.text
+    assert "/static/graph.js" in response.text
+    assert 'id="graph-canvas"' in response.text

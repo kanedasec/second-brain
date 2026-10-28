@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Knowledge graph · Second Brain{% endblock %}
+{% block content %}
+<section class="graph-shell" aria-labelledby="graph-heading">
+  <div class="graph-intro">
+    <p class="eyebrow"><span class="eyebrow-index">02</span> Knowledge graph</p>
+    <h1 id="graph-heading" class="display">Trace how it all connects.</h1>
+  </div>
+
+  <div class="graph-stage">
+    <div id="graph-canvas" class="graph-canvas" role="application"
+         aria-label="Interactive force-directed knowledge graph. Drag to move nodes, scroll to zoom, click a node for details."></div>
+
+    <div class="graph-overlay graph-legend" aria-hidden="false">
+      <p class="graph-legend-title">Categories</p>
+      <ul id="graph-legend-list" class="graph-legend-list"></ul>
+    </div>
+
+    <p id="graph-empty" class="graph-empty" hidden>
+      No graph yet. <a href="/import">Import</a> a schema&nbsp;2.0 graph, or
+      <a href="/graph-prompt.txt">get the AI prompt</a>. Existing memories appear here automatically.
+    </p>
+
+    <aside id="node-panel" class="node-panel" tabindex="-1" aria-live="polite" hidden>
+      <button type="button" id="node-panel-close" class="node-panel-close" aria-label="Close details">×</button>
+      <div id="node-panel-body"></div>
+    </aside>
+  </div>
+</section>
+
+<script src="{{ url_for('static', path='/vendor/force-graph.min.js') }}" defer></script>
+<script src="{{ url_for('static', path='/graph.js') }}" defer></script>
+{% endblock %}

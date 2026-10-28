@@ -23,6 +23,7 @@
       <span></span><span></span>
     </button>
     <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
+      <a href="/graph" {% if current_path == '/graph' %}aria-current="page"{% endif %}>Graph</a>
       <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Memories</a>
       <a href="/tasks" {% if current_path == '/tasks' %}aria-current="page"{% endif %}>Tasks</a>
       <a href="/import" {% if current_path == '/import' %}aria-current="page"{% endif %}>Import</a>

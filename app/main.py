@@ -302,6 +302,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="second-brain-schema.json"'},
         )
 
+    @app.get("/graph", response_class=HTMLResponse)
+    async def graph_page(request: Request):
+        return render(request, "graph.html")
+
     @app.get("/graph.json", response_class=JSONResponse)
     async def graph_data():
         return JSONResponse(repository.graph_payload())
