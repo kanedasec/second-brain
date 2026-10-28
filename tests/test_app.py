@@ -9,6 +9,18 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+def import_json(client, filename: str, content: str, headers: dict[str, str] | None = None):
+    form = client.get("/import")
+    assert form.status_code == 200
+    csrf_token = client.cookies["second_brain_csrf"]
+    return client.post(
+        "/import",
+        headers=headers or {},
+        data={"csrf_token": csrf_token},
+        files={"files": (filename, content, "application/json")},
+    )
+
+
 def test_ready_and_empty_dashboard(client):
     assert client.get("/ready").json() == {"status": "ready"}
     response = client.get("/")
@@ -26,10 +38,7 @@ def test_prompt_and_schema_are_retrievable(client):
 
 
 def test_json_upload_imports_and_renders_memory(client, example_bundle):
-    response = client.post(
-        "/import",
-        files={"files": ("memory.json", json.dumps(example_bundle), "application/json")},
-    )
+    response = import_json(client, "memory.json", json.dumps(example_bundle))
     assert response.status_code == 200
     assert "Imported" in response.text
     dashboard = client.get("/")
@@ -46,22 +55,37 @@ def test_json_upload_imports_and_renders_memory(client, example_bundle):
 
 
 def test_invalid_upload_does_not_write_data(client):
-    response = client.post(
-        "/import",
-        files={"files": ("broken.json", "{no", "application/json")},
-    )
+    response = import_json(client, "broken.json", "{no")
     assert response.status_code == 422
     assert "Invalid JSON" in response.text
     assert "Your atlas starts empty" in client.get("/").text
 
 
 def test_cross_origin_post_is_rejected(client, example_bundle):
+    response = import_json(
+        client,
+        "memory.json",
+        json.dumps(example_bundle),
+        headers={"Origin": "https://attacker.invalid"},
+    )
+    assert response.status_code == 403
+
+
+def test_import_requires_matching_csrf_token(client, example_bundle):
     response = client.post(
         "/import",
-        headers={"Origin": "https://attacker.invalid"},
+        data={"csrf_token": "attacker-token"},
         files={"files": ("memory.json", json.dumps(example_bundle), "application/json")},
     )
     assert response.status_code == 403
+    assert "Your atlas starts empty" in client.get("/").text
+
+
+def test_import_report_escapes_uploaded_filename(client):
+    response = import_json(client, "<img src=x onerror=alert(1)>.json", "{no")
+    assert response.status_code == 422
+    assert "<img src=x onerror=alert(1)>" not in response.text
+    assert "&lt;img src=x onerror=alert(1)&gt;.json" in response.text
 
 
 def test_production_auth_protects_data_but_not_readiness(settings):

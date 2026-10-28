@@ -110,6 +110,22 @@ CREATE TABLE IF NOT EXISTS recommendations (
 );
 """
 
+MEMORY_CHILD_QUERIES = {
+    "facts": "SELECT * FROM facts WHERE memory_id = ? ORDER BY id",
+    "entities": "SELECT * FROM entities WHERE memory_id = ? ORDER BY id",
+    "actions": "SELECT * FROM actions WHERE memory_id = ? ORDER BY id",
+    "knowledge_gaps": "SELECT * FROM knowledge_gaps WHERE memory_id = ? ORDER BY id",
+    "recommendations": "SELECT * FROM recommendations WHERE memory_id = ? ORDER BY id",
+}
+
+OPEN_ACTIONS_SQL = """
+SELECT a.*, m.title AS memory_title, m.occurred_at
+FROM actions a JOIN memories m ON m.id = a.memory_id
+WHERE a.status = 'open'
+ORDER BY CASE a.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+         a.due_at, m.occurred_at DESC
+"""
+
 
 def utc_iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -171,10 +187,13 @@ class Repository:
                 ).fetchone():
                     raise DuplicateBundleError("this exact JSON file has already been imported")
 
-                existing = connection.execute(
-                    f"SELECT id FROM memories WHERE id IN ({','.join('?' for _ in bundle.memories)})",
-                    [memory.id for memory in bundle.memories],
-                ).fetchall()
+                existing = []
+                for memory in bundle.memories:
+                    row = connection.execute(
+                        "SELECT id FROM memories WHERE id = ?", (memory.id,)
+                    ).fetchone()
+                    if row:
+                        existing.append(row)
                 if existing:
                     ids = ", ".join(row["id"] for row in existing)
                     raise DuplicateMemoryError(f"memory id already exists: {ids}")
@@ -353,50 +372,95 @@ class Repository:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
-        clauses: list[str] = []
-        params: list[Any] = []
         query = query.strip()
-        if query:
-            pattern = f"%{query}%"
-            clauses.append(
-                """(
-                    m.title LIKE ? OR m.summary LIKE ? OR m.context LIKE ? OR m.people_json LIKE ?
-                    OR EXISTS (SELECT 1 FROM facts f WHERE f.memory_id = m.id AND (f.statement LIKE ? OR f.evidence LIKE ?))
-                    OR EXISTS (SELECT 1 FROM entities e WHERE e.memory_id = m.id AND (e.name LIKE ? OR e.explanation LIKE ?))
-                    OR EXISTS (
-                        SELECT 1 FROM memory_topics smt JOIN topics st ON st.id = smt.topic_id
-                        WHERE smt.memory_id = m.id AND (st.name LIKE ? OR smt.context LIKE ?)
-                    )
-                )"""
-            )
-            params.extend([pattern] * 10)
-        if topic_slug:
-            clauses.append(
-                """EXISTS (
-                    SELECT 1 FROM memory_topics fmt JOIN topics ft ON ft.id = fmt.topic_id
-                    WHERE fmt.memory_id = m.id AND ft.slug = ?
-                )"""
-            )
-            params.append(topic_slug)
-        if date_from:
-            clauses.append("m.occurred_at >= ?")
-            params.append(utc_iso(date_from))
-        if date_to_exclusive:
-            clauses.append("m.occurred_at < ?")
-            params.append(utc_iso(date_to_exclusive))
-        where = "WHERE " + " AND ".join(clauses) if clauses else ""
+        pattern = f"%{query}%" if query else None
+        topic_filter = topic_slug or None
+        date_from_filter = utc_iso(date_from) if date_from else None
+        date_to_filter = utc_iso(date_to_exclusive) if date_to_exclusive else None
+        params: list[Any] = [
+            pattern,
+            *([pattern] * 10),
+            topic_filter,
+            topic_filter,
+            date_from_filter,
+            date_from_filter,
+            date_to_filter,
+            date_to_filter,
+        ]
 
         with self.connect() as connection:
             total = connection.execute(
-                f"SELECT COUNT(*) FROM memories m {where}", params
+                """
+                SELECT COUNT(*) FROM memories m
+                WHERE (
+                    ? IS NULL OR m.title LIKE ? OR m.summary LIKE ? OR m.context LIKE ?
+                    OR m.people_json LIKE ?
+                    OR EXISTS (
+                        SELECT 1 FROM facts f
+                        WHERE f.memory_id = m.id
+                          AND (f.statement LIKE ? OR f.evidence LIKE ?)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM entities e
+                        WHERE e.memory_id = m.id
+                          AND (e.name LIKE ? OR e.explanation LIKE ?)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM memory_topics smt
+                        JOIN topics st ON st.id = smt.topic_id
+                        WHERE smt.memory_id = m.id
+                          AND (st.name LIKE ? OR smt.context LIKE ?)
+                    )
+                )
+                AND (
+                    ? IS NULL OR EXISTS (
+                        SELECT 1 FROM memory_topics fmt
+                        JOIN topics ft ON ft.id = fmt.topic_id
+                        WHERE fmt.memory_id = m.id AND ft.slug = ?
+                    )
+                )
+                AND (? IS NULL OR m.occurred_at >= ?)
+                AND (? IS NULL OR m.occurred_at < ?)
+                """,
+                params,
             ).fetchone()[0]
             rows = connection.execute(
-                f"""
+                """
                 SELECT m.*,
-                    (SELECT COUNT(*) FROM actions a WHERE a.memory_id = m.id AND a.status = 'open') AS open_actions,
-                    (SELECT COUNT(*) FROM knowledge_gaps g WHERE g.memory_id = m.id) AS gap_count
+                    (SELECT COUNT(*) FROM actions a
+                     WHERE a.memory_id = m.id AND a.status = 'open') AS open_actions,
+                    (SELECT COUNT(*) FROM knowledge_gaps g
+                     WHERE g.memory_id = m.id) AS gap_count
                 FROM memories m
-                {where}
+                WHERE (
+                    ? IS NULL OR m.title LIKE ? OR m.summary LIKE ? OR m.context LIKE ?
+                    OR m.people_json LIKE ?
+                    OR EXISTS (
+                        SELECT 1 FROM facts f
+                        WHERE f.memory_id = m.id
+                          AND (f.statement LIKE ? OR f.evidence LIKE ?)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM entities e
+                        WHERE e.memory_id = m.id
+                          AND (e.name LIKE ? OR e.explanation LIKE ?)
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM memory_topics smt
+                        JOIN topics st ON st.id = smt.topic_id
+                        WHERE smt.memory_id = m.id
+                          AND (st.name LIKE ? OR smt.context LIKE ?)
+                    )
+                )
+                AND (
+                    ? IS NULL OR EXISTS (
+                        SELECT 1 FROM memory_topics fmt
+                        JOIN topics ft ON ft.id = fmt.topic_id
+                        WHERE fmt.memory_id = m.id AND ft.slug = ?
+                    )
+                )
+                AND (? IS NULL OR m.occurred_at >= ?)
+                AND (? IS NULL OR m.occurred_at < ?)
                 ORDER BY COALESCE(m.occurred_at, m.created_at) DESC, m.created_at DESC
                 LIMIT ? OFFSET ?
                 """,
@@ -427,10 +491,8 @@ class Repository:
             memory = dict(row)
             memory["people"] = json.loads(memory.pop("people_json"))
             memory["topics"] = self._memory_topics(connection, memory_id)
-            for table in ("facts", "entities", "actions", "knowledge_gaps", "recommendations"):
-                rows = connection.execute(
-                    f"SELECT * FROM {table} WHERE memory_id = ? ORDER BY id", (memory_id,)
-                ).fetchall()
+            for table, query in MEMORY_CHILD_QUERIES.items():
+                rows = connection.execute(query, (memory_id,)).fetchall()
                 memory[table] = [dict(item) for item in rows]
             return memory
 
@@ -489,30 +551,22 @@ class Repository:
         now = utc_iso(datetime.now(UTC))
         soon = utc_iso(datetime.now(UTC) + timedelta(days=14))
         with self.connect() as connection:
-            base = """
-                SELECT a.*, m.title AS memory_title, m.occurred_at
-                FROM actions a JOIN memories m ON m.id = a.memory_id
-                WHERE a.status = 'open' AND {condition}
-                ORDER BY CASE a.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
-                         a.due_at, m.occurred_at DESC
-            """
-            return {
-                "overdue": [
-                    dict(row)
-                    for row in connection.execute(base.format(condition="a.due_at < ?"), (now,))
-                ],
-                "upcoming": [
-                    dict(row)
-                    for row in connection.execute(
-                        base.format(condition="a.due_at >= ? AND a.due_at <= ?"), (now, soon)
-                    )
-                ],
-                "later": [
-                    dict(row)
-                    for row in connection.execute(base.format(condition="a.due_at > ?"), (soon,))
-                ],
-                "unscheduled": [
-                    dict(row)
-                    for row in connection.execute(base.format(condition="a.due_at IS NULL"))
-                ],
-            }
+            rows = connection.execute(OPEN_ACTIONS_SQL).fetchall()
+        board: dict[str, list[dict[str, Any]]] = {
+            "overdue": [],
+            "upcoming": [],
+            "later": [],
+            "unscheduled": [],
+        }
+        for row in rows:
+            action = dict(row)
+            due_at = action["due_at"]
+            if due_at is None:
+                board["unscheduled"].append(action)
+            elif due_at < now:
+                board["overdue"].append(action)
+            elif due_at <= soon:
+                board["upcoming"].append(action)
+            else:
+                board["later"].append(action)
+        return board

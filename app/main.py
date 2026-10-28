@@ -25,6 +25,7 @@ from app.schemas import KnowledgeBundle
 
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_PATHS = {"/ready", "/favicon.svg"}
+CSRF_COOKIE_NAME = "second_brain_csrf"
 
 
 def safe_filename(value: str | None) -> str:
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
     templates = Jinja2Templates(directory=BASE_DIR / "templates")
+    templates.env.autoescape = True
     display_zone = ZoneInfo(app_settings.timezone)
 
     def display_datetime(value: str | datetime | None, date_only: bool = False) -> str:
@@ -113,6 +115,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if context:
             values.update(context)
         return templates.TemplateResponse(request, name, values, status_code=status_code)
+
+    def render_import(
+        request: Request,
+        results: list[dict[str, str | int]] | None = None,
+        status_code: int = 200,
+    ) -> Response:
+        csrf_token = secrets.token_urlsafe(32)
+        response = render(
+            request,
+            "import.jinja",
+            {
+                "csrf_token": csrf_token,
+                "max_upload_mb": app_settings.max_upload_bytes // 1_048_576,
+                "results": results or [],
+            },
+            status_code=status_code,
+        )
+        response.set_cookie(
+            CSRF_COOKIE_NAME,
+            csrf_token,
+            max_age=3_600,
+            httponly=True,
+            secure=app_settings.environment == "production",
+            samesite="strict",
+            path="/import",
+        )
+        return response
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(
@@ -182,19 +211,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/import", response_class=HTMLResponse)
     async def import_page(request: Request):
-        return render(request, "import.html", {"max_upload_mb": app_settings.max_upload_bytes // 1_048_576})
+        return render_import(request)
 
     @app.post("/import", response_class=HTMLResponse)
-    async def import_files(request: Request, files: list[UploadFile] = File(...)):
+    async def import_files(
+        request: Request,
+        files: list[UploadFile] = File(...),
+        csrf_token: str = Form(...),
+    ):
+        csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
+        if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_token):
+            raise HTTPException(status_code=403, detail="invalid CSRF token")
+
         results: list[dict[str, str | int]] = []
         if len(files) > app_settings.max_upload_files:
-            return render(
+            return render_import(
                 request,
-                "import.html",
-                {
-                    "max_upload_mb": app_settings.max_upload_bytes // 1_048_576,
-                    "results": [{"status": "error", "name": "Upload", "message": "too many files"}],
-                },
+                [{"status": "error", "name": "Upload", "message": "too many files"}],
                 status_code=422,
             )
 
@@ -230,10 +263,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await uploaded.close()
 
         status_code = 200 if any(item["status"] == "success" for item in results) else 422
-        return render(
+        return render_import(
             request,
-            "import.html",
-            {"max_upload_mb": app_settings.max_upload_bytes // 1_048_576, "results": results},
+            results,
             status_code=status_code,
         )
 

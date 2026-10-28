@@ -10,6 +10,7 @@
 
   <div class="import-layout">
     <form class="upload-panel" method="post" action="/import" enctype="multipart/form-data">
+      <input name="csrf_token" type="hidden" value="{{ csrf_token }}">
       <label class="drop-zone" for="files">
         <span class="drop-icon" aria-hidden="true">↥</span>
         <strong>Drop JSON files here</strong>
