@@ -3,25 +3,25 @@
 {% block content %}
 <section class="tasks-page reveal">
   <header class="page-hero">
-    <div class="eyebrow"><span>02</span> Task radar</div>
-    <h1>Loose ends,<br><em>made visible.</em></h1>
-    <p class="lede">Only commitments found in your source material appear here. AI recommendations stay separate.</p>
+    <div class="eyebrow"><span>02</span> {{ t("Task radar") }}</div>
+    <h1>{{ t("Loose ends,") }}<br><em>{{ t("made visible.") }}</em></h1>
+    <p class="lede">{{ t("Only commitments found in your source material appear here. AI recommendations stay separate.") }}</p>
   </header>
   <div class="task-board">
     {% set columns = [('overdue', 'Overdue', 'Past the stated deadline'), ('upcoming', 'Next 14 days', 'Scheduled and approaching'), ('unscheduled', 'Needs scheduling', 'No deadline was stated'), ('later', 'Later', 'Beyond the next two weeks')] %}
     {% for key, title, description in columns %}
     <section class="task-column task-column-{{ key }}">
-      <header><span>{{ "%02d"|format(board[key]|length) }}</span><h2>{{ title }}</h2><p>{{ description }}</p></header>
+      <header><span>{{ "%02d"|format(board[key]|length) }}</span><h2>{{ t(title) }}</h2><p>{{ t(description) }}</p></header>
       <div class="task-stack">
         {% for action in board[key] %}
         <article>
           <div class="priority priority-{{ action.priority }}">{{ action.priority }}</div>
           <h3>{{ action.title }}</h3>
-          <p>{{ action.owner or 'Owner not stated' }}</p>
+          <p>{{ action.owner or t("Owner not stated") }}</p>
           <time>{{ action.due_at|display_due }}</time>
           <a href="/memories/{{ action.memory_id }}">{{ action.memory_title }} ↗</a>
         </article>
-        {% else %}<p class="quiet">Nothing here.</p>{% endfor %}
+        {% else %}<p class="quiet">{{ t("Nothing here.") }}</p>{% endfor %}
       </div>
     </section>
     {% endfor %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Not found · Second Brain{% endblock %}
 {% block content %}
-<section class="not-found reveal"><span>404</span><h1>This thread<br><em>isn’t in the atlas.</em></h1><p>The memory or topic may have moved, or never existed.</p><a class="button button-dark" href="/">Return to memories</a></section>
+<section class="not-found reveal"><span>404</span><h1>{{ t("This thread") }}<br><em>{{ t("isn’t in the atlas.") }}</em></h1><p>{{ t("The memory or topic may have moved, or never existed.") }}</p><a class="button button-dark" href="/">{{ t("Return to memories") }}</a></section>
 {% endblock %}

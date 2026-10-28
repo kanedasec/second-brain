@@ -167,3 +167,51 @@ def test_graph_page_loads_viewer(client):
     assert "/static/vendor/force-graph.min.js" in response.text
     assert "/static/graph.js" in response.text
     assert 'id="graph-canvas"' in response.text
+
+
+def test_language_toggle_sets_cookie_and_translates(client, example_bundle):
+    # default English
+    assert "Memories" in client.get("/").text
+    # switch to Brazilian Portuguese
+    resp = client.get("/set-language", params={"lang": "pt-BR", "next": "/"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "lang=pt-BR" in resp.headers.get("set-cookie", "")
+    body = client.get("/").text  # cookie now stored by the test client
+    assert "Memórias" in body and "Cronologia" in body
+
+
+def test_set_language_rejects_offsite_redirect(client):
+    resp = client.get(
+        "/set-language", params={"lang": "en", "next": "//evil.example"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+
+
+def test_topic_page_renders(client, example_bundle):
+    import_json(client, "memory.json", json.dumps(example_bundle))
+    # the example bundle has an "Observatory project" topic
+    page = client.get("/topics/observatory-project")
+    assert page.status_code == 200
+    assert "Grounded facts" in page.text
+
+
+def test_prompt_library_page_and_downloads(client):
+    page = client.get("/prompt")
+    assert page.status_code == 200
+    # cards are listed but the full prompt bodies are NOT inlined in the page
+    assert 'data-prompt-id="email"' in page.text
+    assert 'data-prompt-id="graph"' in page.text
+    assert "Email day review" in page.text
+    assert "Source material begins after this line" not in page.text  # not fully exposed
+
+    email = client.get("/prompts/email.txt")
+    assert email.status_code == 200
+    assert "Email day review" in email.text
+    assert "Prepared for the Second Brain graph schema generator" in email.text
+
+    graph = client.get("/prompts/graph.txt")
+    assert graph.status_code == 200
+    assert '"schema_version"' in graph.text  # schema appended for the generator
+
+    assert client.get("/prompts/nope.txt").status_code == 404

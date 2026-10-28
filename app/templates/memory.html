@@ -2,10 +2,10 @@
 {% block title %}{{ memory.title }} · Second Brain{% endblock %}
 {% block content %}
 <article class="detail-page reveal">
-  <a class="back-link" href="/">← Memory atlas</a>
+  <a class="back-link" href="/">{{ t("← Memory atlas") }}</a>
   <header class="detail-hero">
     <div class="eyebrow"><span>{{ memory.source_type }}</span> {{ memory.source_label }}</div>
-    {% if memory.occurred_at %}<time datetime="{{ memory.occurred_at }}">{{ memory.occurred_at|display_datetime }}</time>{% else %}<span class="unknown-date">Date unknown</span>{% endif %}
+    {% if memory.occurred_at %}<time datetime="{{ memory.occurred_at }}">{{ memory.occurred_at|display_datetime }}</time>{% else %}<span class="unknown-date">{{ t("Date unknown") }}</span>{% endif %}
     <h1>{{ memory.title }}</h1>
     <p class="lede">{{ memory.summary }}</p>
     <div class="tag-row">{% for topic in memory.topics %}<a class="tag" href="/topics/{{ topic.slug }}">{{ topic.name }}</a>{% endfor %}</div>
@@ -13,17 +13,17 @@
 
   <div class="detail-grid">
     <aside class="detail-aside">
-      <div><span class="overline">Context</span><p>{{ memory.context }}</p></div>
-      {% if memory.people %}<div><span class="overline">People</span><p>{{ memory.people|join(', ') }}</p></div>{% endif %}
-      <div><span class="overline">Memory ID</span><code>{{ memory.id }}</code></div>
+      <div><span class="overline">{{ t("Context") }}</span><p>{{ memory.context }}</p></div>
+      {% if memory.people %}<div><span class="overline">{{ t("People") }}</span><p>{{ memory.people|join(', ') }}</p></div>{% endif %}
+      <div><span class="overline">{{ t("Memory ID") }}</span><code>{{ memory.id }}</code></div>
     </aside>
     <div class="detail-body">
       {% if memory.facts %}
       <section class="detail-section">
-        <div class="section-number">01</div><h2>What you know</h2>
+        <div class="section-number">01</div><h2>{{ t("What you know") }}</h2>
         <div class="fact-list">
           {% for fact in memory.facts %}
-          <article><span class="confidence confidence-{{ fact.confidence }}">{{ fact.confidence }}</span><p>{{ fact.statement }}</p><details><summary>Source evidence</summary><blockquote>{{ fact.evidence }}</blockquote></details></article>
+          <article><span class="confidence confidence-{{ fact.confidence }}">{{ fact.confidence }}</span><p>{{ fact.statement }}</p><details><summary>{{ t("Source evidence") }}</summary><blockquote>{{ fact.evidence }}</blockquote></details></article>
           {% endfor %}
         </div>
       </section>
@@ -31,12 +31,12 @@
 
       {% if memory.actions %}
       <section class="detail-section">
-        <div class="section-number">02</div><h2>Commitments</h2>
+        <div class="section-number">02</div><h2>{{ t("Commitments") }}</h2>
         <div class="action-list">
           {% for action in memory.actions %}
           <article class="action-item status-{{ action.status }}">
             <span class="checkbox" aria-hidden="true">{% if action.status == 'done' %}✓{% endif %}</span>
-            <div><h3>{{ action.title }}</h3><p>{{ action.owner or 'Owner not stated' }} · {{ action.due_at|display_due }}</p><small>{{ action.priority }} priority · {{ action.status }}</small></div>
+            <div><h3>{{ action.title }}</h3><p>{{ action.owner or t("Owner not stated") }} · {{ action.due_at|display_due }}</p><small>{{ action.priority }} {{ t("priority") }} · {{ action.status }}</small></div>
           </article>
           {% endfor %}
         </div>
@@ -45,10 +45,10 @@
 
       {% if memory.entities %}
       <section class="detail-section">
-        <div class="section-number">03</div><h2>Mentioned, explained</h2>
+        <div class="section-number">03</div><h2>{{ t("Mentioned, explained") }}</h2>
         <div class="entity-grid">
           {% for entity in memory.entities %}
-          <article><span>{{ entity.type }}</span><h3>{{ entity.name }}</h3><p>{{ entity.explanation }}</p><small>Explanation: {{ entity.explanation_source|replace('_', ' ') }}</small></article>
+          <article><span>{{ entity.type }}</span><h3>{{ entity.name }}</h3><p>{{ entity.explanation }}</p><small>{{ t("Explanation:") }} {{ entity.explanation_source|replace('_', ' ') }}</small></article>
           {% endfor %}
         </div>
       </section>
@@ -56,7 +56,7 @@
 
       {% if memory.knowledge_gaps %}
       <section class="detail-section gap-section">
-        <div class="section-number">04</div><h2>What you still need</h2>
+        <div class="section-number">04</div><h2>{{ t("What you still need") }}</h2>
         {% for gap in memory.knowledge_gaps %}
         <article><h3>{{ gap.question }}</h3><p>{{ gap.why_it_matters }}</p></article>
         {% endfor %}
@@ -65,8 +65,8 @@
 
       {% if memory.recommendations %}
       <section class="detail-section recommendation-section">
-        <div class="section-number">AI</div><h2>Recommendations</h2>
-        <p class="disclosure">The following items are generated advice. They are not source facts or commitments.</p>
+        <div class="section-number">AI</div><h2>{{ t("Recommendations") }}</h2>
+        <p class="disclosure">{{ t("The following items are generated advice. They are not source facts or commitments.") }}</p>
         {% for item in memory.recommendations %}
         <article><h3>{{ item.advice }}</h3><p>{{ item.rationale }}</p>{% if item.related_topic %}<span class="tag">{{ item.related_topic }}</span>{% endif %}</article>
         {% endfor %}

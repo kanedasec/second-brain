@@ -24,6 +24,22 @@
   const INK = '#e9ecff';
   const colorFor = (node) => COLORS[node.category] || COLORS.other;
 
+  // UI strings (panel only — never node content)
+  const LANG = document.documentElement.lang || 'en';
+  const STR = {
+    'pt-BR': {
+      'Connections': 'Conexões',
+      'Open full memory →': 'Abrir memória completa →',
+      'Source': 'Fonte',
+      'Source-grounded': 'Baseado na fonte',
+      'AI-inferred': 'Inferido por IA',
+      'Loading…': 'Carregando…',
+      'Could not load this node.': 'Não foi possível carregar este nó.',
+      'Could not load the graph.': 'Não foi possível carregar o grafo.',
+    },
+  };
+  const tr = (s) => (STR[LANG] && STR[LANG][s]) || s;
+
   const escapeHtml = (value) =>
     String(value ?? '').replace(/[&<>"']/g, (ch) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
@@ -138,7 +154,7 @@
         </button></li>`;
       })
       .join('');
-    return `<h3 class="panel-subhead">Connections <span>${detail.neighbors.length}</span></h3>
+    return `<h3 class="panel-subhead">${tr('Connections')} <span>${detail.neighbors.length}</span></h3>
             <ul class="node-links">${items}</ul>`;
   }
 
@@ -146,7 +162,7 @@
     if (!detail.source_label && !detail.source_type) return '';
     const excerpt = detail.source_excerpt
       ? `<blockquote>${escapeHtml(detail.source_excerpt)}</blockquote>` : '';
-    return `<div class="panel-source"><span class="panel-label">Source</span>
+    return `<div class="panel-source"><span class="panel-label">${tr('Source')}</span>
       <p>${escapeHtml(detail.source_type || '')}${detail.source_label ? ' · ' + escapeHtml(detail.source_label) : ''}</p>
       ${excerpt}</div>`;
   }
@@ -161,23 +177,23 @@
 
   async function openPanel(nodeId) {
     panel.hidden = false;
-    panelBody.innerHTML = '<p class="panel-loading">Loading…</p>';
+    panelBody.innerHTML = `<p class="panel-loading">${tr('Loading…')}</p>`;
     let detail;
     try {
       const res = await fetch(`/nodes/${encodeURIComponent(nodeId)}`);
       if (!res.ok) throw new Error('not found');
       detail = await res.json();
     } catch (err) {
-      panelBody.innerHTML = '<p class="panel-loading">Could not load this node.</p>';
+      panelBody.innerHTML = `<p class="panel-loading">${tr('Could not load this node.')}</p>`;
       return;
     }
 
     const record = detail.record_id
-      ? `<a class="panel-record" href="/memories/${encodeURIComponent(detail.record_id)}">Open full memory →</a>`
+      ? `<a class="panel-record" href="/memories/${encodeURIComponent(detail.record_id)}">${tr('Open full memory →')}</a>`
       : '';
     const provenance = detail.provenance === 'ai_inferred'
-      ? '<span class="badge badge-ai">AI-inferred</span>'
-      : '<span class="badge badge-source">Source-grounded</span>';
+      ? `<span class="badge badge-ai">${tr('AI-inferred')}</span>`
+      : `<span class="badge badge-source">${tr('Source-grounded')}</span>`;
 
     panelBody.innerHTML = `
       <p class="panel-eyebrow"><span class="cat-dot" style="background:${colorFor(detail)}"></span>${escapeHtml(detail.category)} ${provenance}</p>
@@ -239,6 +255,6 @@
     })
     .catch(() => {
       emptyNote.hidden = false;
-      emptyNote.textContent = 'Could not load the graph.';
+      emptyNote.textContent = tr('Could not load the graph.');
     });
 })();

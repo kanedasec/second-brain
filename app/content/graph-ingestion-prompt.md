@@ -1,6 +1,6 @@
 # Second Brain graph ingestion task
 
-Transform the source material I provide after this instruction into **only one valid JSON object** that conforms exactly to the supplied JSON Schema: a knowledge graph of `nodes` and directional `edges`. Do not wrap the result in Markdown and do not add commentary outside the JSON.
+Transform the source material I provide after this instruction into **only one valid JSON object** that conforms exactly to the supplied JSON Schema: a knowledge graph of `nodes` and directional `edges`. The source may be raw notes, email, or a transcript, or a report already prepared by one of the Second Brain review prompts — treat all of it as source material. Do not wrap the result in Markdown and do not add commentary outside the JSON.
 
 ## Grounding rules — do not invent information
 

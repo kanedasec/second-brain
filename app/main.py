@@ -12,18 +12,33 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from app.config import Settings
 from app.db import DuplicateBundleError, DuplicateMemoryError, Repository
+from app.i18n import (
+    LANG_COOKIE,
+    LANG_LABELS,
+    normalize_lang,
+    other_lang,
+    translator,
+)
 from app.prompt import (
     complete_graph_prompt,
     complete_prompt,
     graph_json_schema,
     json_schema,
+    prompt_catalog,
+    prompt_text,
 )
 from app.schemas import GraphBundle, KnowledgeBundle
 
@@ -113,7 +128,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     def render(request: Request, name: str, context: dict | None = None, status_code: int = 200):
-        values = {"request": request, "current_path": request.url.path}
+        lang = normalize_lang(request.cookies.get(LANG_COOKIE))
+        values = {
+            "request": request,
+            "current_path": request.url.path,
+            "t": translator(lang),
+            "lang": lang,
+            "other_lang": other_lang(lang),
+            "lang_labels": LANG_LABELS,
+        }
         if context:
             values.update(context)
         return templates.TemplateResponse(request, name, values, status_code=status_code)
@@ -286,7 +309,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/prompt", response_class=HTMLResponse)
     async def prompt_page(request: Request):
-        return render(request, "prompt.html", {"prompt": complete_prompt()})
+        return render(request, "prompt.html", {"prompts": prompt_catalog()})
+
+    @app.get("/prompts/{prompt_id}.txt", response_class=PlainTextResponse)
+    async def prompt_library_download(prompt_id: str):
+        text = prompt_text(prompt_id)
+        if text is None:
+            raise HTTPException(status_code=404, detail="unknown prompt")
+        return PlainTextResponse(
+            text,
+            headers={
+                "Content-Disposition": f'attachment; filename="second-brain-{prompt_id}-prompt.txt"'
+            },
+        )
 
     @app.get("/prompt.txt", response_class=PlainTextResponse)
     async def prompt_download():
@@ -334,6 +369,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Content-Disposition": 'attachment; filename="second-brain-graph-schema.json"'
             },
         )
+
+    @app.get("/set-language")
+    async def set_language(request: Request, lang: str = "en", next: str = "/"):
+        code = normalize_lang(lang)
+        # Only allow same-site relative redirect targets (no open redirect).
+        target = next if next.startswith("/") and not next.startswith("//") else "/"
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(
+            LANG_COOKIE, code, max_age=31_536_000, samesite="lax", path="/"
+        )
+        return response
 
     @app.get("/ready")
     async def ready():
