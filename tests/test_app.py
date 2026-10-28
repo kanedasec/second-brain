@@ -71,6 +71,30 @@ def test_cross_origin_post_is_rejected(client, example_bundle):
     assert response.status_code == 403
 
 
+def test_same_origin_null_origin_is_allowed(client, example_bundle):
+    # Chromium under a no-referrer policy sends "Origin: null" on same-origin
+    # form POSTs; the Fetch Metadata signal still marks them same-origin.
+    response = import_json(
+        client,
+        "memory.json",
+        json.dumps(example_bundle),
+        headers={"Origin": "null", "Sec-Fetch-Site": "same-origin"},
+    )
+    assert response.status_code == 200
+    assert "Imported" in response.text
+
+
+def test_cross_site_fetch_metadata_is_rejected(client, example_bundle):
+    response = import_json(
+        client,
+        "memory.json",
+        json.dumps(example_bundle),
+        headers={"Sec-Fetch-Site": "cross-site"},
+    )
+    assert response.status_code == 403
+    assert "Your atlas starts empty" in client.get("/").text
+
+
 def test_import_requires_matching_csrf_token(client, example_bundle):
     response = client.post(
         "/import",

@@ -92,11 +92,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
-            origin = request.headers.get("origin")
-            if origin:
-                parsed_origin = urlparse(origin)
-                if parsed_origin.netloc.casefold() != request.headers.get("host", "").casefold():
-                    return PlainTextResponse("Cross-origin request denied", status_code=403)
+            if not _is_same_origin_request(request):
+                return PlainTextResponse("Cross-origin request denied", status_code=403)
 
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
@@ -316,6 +313,28 @@ def _valid_basic_auth(request: Request, settings: Settings) -> bool:
     return secrets.compare_digest(username, settings.username or "") and secrets.compare_digest(
         password, settings.password or ""
     )
+
+
+def _is_same_origin_request(request: Request) -> bool:
+    """Reject cross-site state-changing requests (CSRF defense).
+
+    Prefer the Fetch Metadata ``Sec-Fetch-Site`` signal, which browsers set and
+    page scripts cannot forge: only ``same-origin`` and ``none`` (a direct,
+    user-initiated navigation) are allowed. When that header is absent (older
+    clients), fall back to comparing the ``Origin`` host against ``Host``. A
+    ``null`` Origin is not treated as a match here; same-origin browsers that
+    send ``Origin: null`` (for example under a ``no-referrer`` policy) are
+    admitted by the Fetch Metadata branch instead. The per-form double-submit
+    CSRF token remains the second layer of defense.
+    """
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site is not None:
+        return fetch_site in {"same-origin", "none"}
+
+    origin = request.headers.get("origin")
+    if not origin or origin == "null":
+        return True
+    return urlparse(origin).netloc.casefold() == request.headers.get("host", "").casefold()
 
 
 app = create_app()
