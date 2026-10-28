@@ -893,12 +893,50 @@ class Repository:
         detail["neighbors"] = neighbors
         return detail
 
-    def export_graph(self) -> dict[str, Any] | None:
-        """Export the current graph (stored v2 graph unified with the v1
-        projection) as a schema-2.0 GraphBundle dict that re-imports cleanly."""
+    def export_graph(
+        self, seeds: list[str] | None = None, depth: int = 3
+    ) -> dict[str, Any] | None:
+        """Export the graph as a schema-2.0 GraphBundle that re-imports cleanly.
+
+        With no seeds, exports the whole graph (stored v2 unified with the v1
+        projection). With seeds, exports only those nodes plus everything within
+        ``depth`` relationship hops (edges treated as undirected for reach), and
+        the edges among the included nodes."""
         payload = self.graph_payload()
-        if not payload["nodes"]:
+        all_nodes = {node["id"]: node for node in payload["nodes"]}
+        if not all_nodes:
             return None
+        edges = payload["edges"]
+
+        if seeds:
+            seed_ids = [s for s in seeds if s in all_nodes]
+            if not seed_ids:
+                return None
+            adjacency: dict[str, set[str]] = {}
+            for edge in edges:
+                adjacency.setdefault(edge["source"], set()).add(edge["target"])
+                adjacency.setdefault(edge["target"], set()).add(edge["source"])
+            included = set(seed_ids)
+            frontier = set(seed_ids)
+            for _ in range(max(1, depth)):
+                nxt = {
+                    other
+                    for nid in frontier
+                    for other in adjacency.get(nid, ())
+                    if other not in included
+                }
+                included |= nxt
+                frontier = nxt
+                if not frontier:
+                    break
+            node_payload = [all_nodes[i] for i in all_nodes if i in included]
+            edge_payload = [
+                e for e in edges if e["source"] in included and e["target"] in included
+            ]
+        else:
+            node_payload = list(all_nodes.values())
+            edge_payload = edges
+
         with self.connect() as connection:
             stored = {
                 row["id"]: row
@@ -908,7 +946,7 @@ class Repository:
                 ).fetchall()
             }
         nodes: list[dict[str, Any]] = []
-        for item in payload["nodes"]:
+        for item in node_payload:
             node: dict[str, Any] = {
                 "id": item["id"],
                 "category": item["category"],
@@ -929,7 +967,7 @@ class Repository:
                 if row["metadata_json"]:
                     node["metadata"] = json.loads(row["metadata_json"])
             nodes.append(node)
-        edges = [
+        out_edges = [
             {
                 "source": edge["source"],
                 "target": edge["target"],
@@ -937,12 +975,12 @@ class Repository:
                 "directed": bool(edge.get("directed", True)),
                 "provenance": edge.get("provenance") or "source",
             }
-            for edge in payload["edges"]
+            for edge in edge_payload
         ]
         return {
             "schema_version": "2.0",
             "generated_at": utc_iso(datetime.now(UTC)),
             "generator": {"provider": "second-brain", "model": "export"},
             "nodes": nodes,
-            "edges": edges,
+            "edges": out_edges,
         }

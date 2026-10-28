@@ -13,6 +13,11 @@
   const resetBtn = document.getElementById('graph-reset');
   const showAllBtn = document.getElementById('graph-show-all');
   const loadingEl = document.getElementById('graph-loading');
+  const exportBar = document.getElementById('graph-export-bar');
+  const exportCount = document.getElementById('graph-export-count');
+  const exportDepth = document.getElementById('graph-export-depth');
+  const exportGo = document.getElementById('graph-export-go');
+  const exportClear = document.getElementById('graph-export-clear');
 
   const PROGRESSIVE_CAP = 400; // nodes shown before progressive disclosure kicks in
 
@@ -54,6 +59,9 @@
       'no matches': 'nenhuma correspondência',
       'match': 'correspondência',
       'matches': 'correspondências',
+      'Add to export': 'Adicionar à exportação',
+      'In export set': 'No conjunto de exportação',
+      'selected': 'selecionado(s)',
     },
   };
   const tr = (s) => (STR[LANG] && STR[LANG][s]) || s;
@@ -75,6 +83,7 @@
   let showAi = true;
   let isolateId = null;
   let isolateSet = new Set();
+  const exportSet = new Set(); // nodes chosen for a subgraph export
   let progThreshold = 0; // min degree to show when progressively disclosed
   let showAllNodes = false;
 
@@ -146,6 +155,17 @@
         ctx.fillStyle = INK;
         ctx.fillText(node.label, node.x, node.y + radius + 1.5);
       }
+
+      if (exportSet.has(node.id)) {
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([3 / scale, 3 / scale]);
+        ctx.lineWidth = 2.5 / scale;
+        ctx.strokeStyle = ACCENT;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       ctx.globalAlpha = 1;
     })
     .nodePointerAreaPaint((node, color, ctx) => {
@@ -182,7 +202,11 @@
       }
       mount.style.cursor = node ? 'pointer' : 'grab';
     })
-    .onNodeClick((node) => {
+    .onNodeClick((node, event) => {
+      if (event && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+        toggleExport(node.id);
+        return;
+      }
       selectNode(node.id);
       Graph.centerAt(node.x, node.y, CAM);
       Graph.zoom(Math.max(Graph.zoom(), 2.2), CAM);
@@ -294,6 +318,27 @@
     }
   }
 
+  function exportHref() {
+    const ids = [...exportSet].map(encodeURIComponent).join(',');
+    const depth = Math.max(1, Math.min(parseInt(exportDepth?.value, 10) || 3, 6));
+    return `/export/graph.json?nodes=${ids}&depth=${depth}`;
+  }
+
+  function updateExportBar() {
+    if (!exportBar) return;
+    const n = exportSet.size;
+    exportBar.hidden = n === 0;
+    if (exportCount) exportCount.textContent = `${n} ${tr('selected')}`;
+    if (exportGo) exportGo.href = exportHref();
+  }
+
+  function toggleExport(nodeId) {
+    if (exportSet.has(nodeId)) exportSet.delete(nodeId);
+    else exportSet.add(nodeId);
+    updateExportBar();
+    refresh();
+  }
+
   async function openPanel(nodeId) {
     panel.hidden = false;
     panelBody.innerHTML = `<p class="panel-loading">${tr('Loading…')}</p>`;
@@ -322,6 +367,7 @@
       ${detail.occurred_at ? `<p class="panel-when">${escapeHtml(detail.occurred_at)}</p>` : ''}
       <div class="panel-tools">
         <button type="button" class="panel-isolate" data-isolated="${isolated}">${isolated ? tr('Show all') : tr('Isolate')}</button>
+        <button type="button" class="panel-export" data-inset="${exportSet.has(nodeId)}">${exportSet.has(nodeId) ? tr('In export set') : tr('Add to export')}</button>
       </div>
       ${sourceMarkup(detail)}
       ${metaMarkup(detail)}
@@ -331,6 +377,11 @@
 
     panelBody.querySelector('.panel-isolate')?.addEventListener('click', () => {
       setIsolate(isolateId === nodeId ? null : nodeId);
+      openPanel(nodeId); // refresh button label
+    });
+
+    panelBody.querySelector('.panel-export')?.addEventListener('click', () => {
+      toggleExport(nodeId);
       openPanel(nodeId); // refresh button label
     });
 
@@ -371,6 +422,14 @@
 
   aiToggle?.addEventListener('change', () => { showAi = aiToggle.checked; refresh(); });
 
+  exportDepth?.addEventListener('input', updateExportBar);
+  exportGo?.addEventListener('click', () => { if (exportGo) exportGo.href = exportHref(); });
+  exportClear?.addEventListener('click', () => {
+    exportSet.clear();
+    updateExportBar();
+    refresh();
+  });
+
   resetBtn?.addEventListener('click', () => {
     searchTerm = '';
     if (searchInput) searchInput.value = '';
@@ -380,6 +439,8 @@
     isolateId = null;
     isolateSet = new Set();
     showAllNodes = false;
+    exportSet.clear();
+    updateExportBar();
     clearSelection();
     legendList.querySelectorAll('.legend-item').forEach((b) => {
       b.setAttribute('aria-pressed', 'true');

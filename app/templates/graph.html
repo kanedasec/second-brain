@@ -16,7 +16,7 @@
     </div>
     <label class="graph-ai-toggle"><input type="checkbox" id="graph-ai-toggle" checked> {{ t("AI links") }}</label>
     <button type="button" id="graph-show-all" class="button button-ghost" hidden>{{ t("Show all nodes") }}</button>
-    <a class="button button-ghost" href="/export/graph.json" download>{{ t("Export JSON") }}</a>
+    <a class="button button-ghost" href="/export/graph.json" download>{{ t("Export all") }}</a>
     <button type="button" id="graph-reset" class="button button-ghost">{{ t("Reset") }}</button>
   </div>
 
@@ -35,6 +35,15 @@
       {{ t("No graph yet.") }} <a href="/import">{{ t("Import") }}</a> {{ t("a schema 2.0 graph, or") }}
       <a href="/prompt">{{ t("get the AI prompt") }}</a>{{ t(". Existing memories appear here automatically.") }}
     </p>
+
+    <div id="graph-export-bar" class="graph-overlay graph-export-bar" hidden>
+      <span id="graph-export-count"></span>
+      <label class="export-depth">{{ t("Levels") }}
+        <input id="graph-export-depth" type="number" min="1" max="6" value="3" aria-label="{{ t('Levels') }}">
+      </label>
+      <a id="graph-export-go" class="button button-accent" href="#" download>{{ t("Export selection") }}</a>
+      <button type="button" id="graph-export-clear" class="button button-ghost">{{ t("Clear") }}</button>
+    </div>
 
     <aside id="node-panel" class="node-panel" tabindex="-1" aria-live="polite" hidden>
       <button type="button" id="node-panel-close" class="node-panel-close" aria-label="{{ t('Close details') }}">×</button>

@@ -243,3 +243,20 @@ def test_presentation_prompt_available(client):
     txt = client.get("/prompts/presentation.txt")
     assert txt.status_code == 200
     assert "single-page html" in txt.text.lower()
+
+
+def test_export_selection_subgraph(client, example_graph):
+    import_graph(client, example_graph)
+    # seed one node; depth 1 should be smaller than the whole graph
+    whole = client.get("/export/graph.json").json()
+    sub = client.get("/export/graph.json", params={"nodes": "project.sensor-array", "depth": 1}).json()
+    from app.schemas import GraphBundle
+    GraphBundle.model_validate(sub)  # re-importable
+    ids = {n["id"] for n in sub["nodes"]}
+    assert "project.sensor-array" in ids
+    assert len(sub["nodes"]) < len(whole["nodes"])  # a neighbourhood, not everything
+    # depth 3 reaches more than depth 1 from the same seed
+    sub3 = client.get("/export/graph.json", params={"nodes": "project.sensor-array", "depth": 3}).json()
+    assert len(sub3["nodes"]) >= len(sub["nodes"])
+    # unknown seed -> 404
+    assert client.get("/export/graph.json", params={"nodes": "nope.zzz"}).status_code == 404

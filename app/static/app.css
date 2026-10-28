@@ -657,3 +657,13 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 .graph-loading span:nth-child(3) { background: var(--yellow); box-shadow: var(--glow-yellow); animation-delay: .3s; }
 @keyframes graphpulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .graph-loading span { animation: none; opacity: .8; } }
+
+/* Graph export selection bar */
+.graph-export-bar { left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+.graph-export-bar #graph-export-count { font-family: var(--mono); font-size: .66rem; text-transform: uppercase; letter-spacing: .1em; color: var(--yellow); white-space: nowrap; }
+.graph-export-bar .export-depth { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.graph-export-bar .export-depth input { width: 48px; background: var(--panel-2); border: 1px solid var(--line-dark); color: var(--ink); padding: 5px 7px; font: inherit; }
+.graph-export-bar .button { min-height: 34px; }
+.panel-export { font-family: var(--mono); font-size: .6rem; text-transform: uppercase; letter-spacing: .1em; color: var(--yellow); background: rgb(252 237 26 / 8%); border: 1px solid rgb(252 237 26 / 30%); padding: 6px 12px; cursor: pointer; clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); }
+.panel-export:hover { box-shadow: var(--glow-yellow); }
+.panel-export[data-inset="true"] { color: var(--blue); border-color: rgb(0 230 255 / 35%); background: rgb(0 230 255 / 8%); }
