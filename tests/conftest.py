@@ -19,6 +19,11 @@ def example_bundle() -> dict:
 
 
 @pytest.fixture
+def example_graph() -> dict:
+    return json.loads((ROOT / "examples" / "example-graph.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
         data_dir=tmp_path,

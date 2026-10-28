@@ -19,8 +19,13 @@ from pydantic import ValidationError
 
 from app.config import Settings
 from app.db import DuplicateBundleError, DuplicateMemoryError, Repository
-from app.prompt import complete_prompt, json_schema
-from app.schemas import KnowledgeBundle
+from app.prompt import (
+    complete_graph_prompt,
+    complete_prompt,
+    graph_json_schema,
+    json_schema,
+)
+from app.schemas import GraphBundle, KnowledgeBundle
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -239,11 +244,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if not raw_data:
                     raise ValueError("file is empty")
                 decoded = json.loads(raw_data)
-                bundle = KnowledgeBundle.model_validate(decoded)
-                count = repository.import_bundle(bundle, filename, raw_data)
-                results.append(
-                    {"status": "success", "name": filename, "message": "Imported", "count": count}
-                )
+                version = decoded.get("schema_version") if isinstance(decoded, dict) else None
+                if version == "2.0":
+                    graph = GraphBundle.model_validate(decoded)
+                    counts = repository.import_graph_bundle(graph, filename, raw_data)
+                    results.append(
+                        {
+                            "status": "success",
+                            "name": filename,
+                            "message": f"Imported graph ({counts['nodes']} nodes, {counts['edges']} edges)",
+                            "count": counts["nodes"],
+                        }
+                    )
+                else:
+                    bundle = KnowledgeBundle.model_validate(decoded)
+                    count = repository.import_bundle(bundle, filename, raw_data)
+                    results.append(
+                        {"status": "success", "name": filename, "message": "Imported", "count": count}
+                    )
             except json.JSONDecodeError as error:
                 results.append(
                     {"status": "error", "name": filename, "message": f"Invalid JSON near line {error.lineno}"}
@@ -282,6 +300,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             json_schema(),
             headers={"Content-Disposition": 'attachment; filename="second-brain-schema.json"'},
+        )
+
+    @app.get("/graph.json", response_class=JSONResponse)
+    async def graph_data():
+        return JSONResponse(repository.graph_payload())
+
+    @app.get("/nodes/{node_id}", response_class=JSONResponse)
+    async def node_data(node_id: str):
+        detail = repository.node_detail(node_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="node not found")
+        return JSONResponse(detail)
+
+    @app.get("/graph-prompt.txt", response_class=PlainTextResponse)
+    async def graph_prompt_download():
+        return PlainTextResponse(
+            complete_graph_prompt(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-graph-prompt.txt"'
+            },
+        )
+
+    @app.get("/graph-schema.json", response_class=JSONResponse)
+    async def graph_schema_download():
+        return JSONResponse(
+            graph_json_schema(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-graph-schema.json"'
+            },
         )
 
     @app.get("/ready")

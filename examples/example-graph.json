@@ -1,0 +1,84 @@
+{
+  "schema_version": "2.0",
+  "generated_at": "2026-10-28T21:40:00-03:00",
+  "generator": { "provider": "example", "model": "synthetic" },
+  "nodes": [
+    {
+      "id": "person.ada-chen",
+      "category": "person",
+      "label": "Ada Chen",
+      "description": "Instrumentation lead coordinating the sensor array review.",
+      "source": { "type": "briefing", "label": "Observatory weekly briefing", "excerpt": "Ada Chen walked the team through the calibration backlog." },
+      "provenance": "source"
+    },
+    {
+      "id": "org.observatory-lab",
+      "category": "organization",
+      "label": "Observatory Lab",
+      "description": "Research group operating the high-altitude sensor array.",
+      "provenance": "source"
+    },
+    {
+      "id": "project.sensor-array",
+      "category": "project",
+      "label": "Sensor Array Upgrade",
+      "description": "Program to recalibrate and extend the observatory's sensor array.",
+      "provenance": "source"
+    },
+    {
+      "id": "memory.2026-10-28-sensor-review",
+      "category": "memory",
+      "label": "Sensor array review",
+      "description": "Weekly review covering calibration drift and the upcoming field test.",
+      "occurred_at": "2026-10-28T14:00:00-03:00",
+      "source": { "type": "briefing", "label": "Observatory weekly briefing" },
+      "provenance": "source"
+    },
+    {
+      "id": "concept.signal-calibration",
+      "category": "concept",
+      "label": "Signal calibration",
+      "description": "Adjusting sensor output against a known reference to remove drift.",
+      "provenance": "source"
+    },
+    {
+      "id": "tech.python",
+      "category": "technology",
+      "label": "Python",
+      "description": "Language used for the array's calibration tooling.",
+      "provenance": "source"
+    },
+    {
+      "id": "place.atacama-site",
+      "category": "place",
+      "label": "Atacama site",
+      "description": "High-altitude desert location hosting the array.",
+      "provenance": "source"
+    },
+    {
+      "id": "event.2026-11-05-field-test",
+      "category": "event",
+      "label": "Field test",
+      "description": "Scheduled on-site validation of the recalibrated sensors.",
+      "occurred_at": "2026-11-05T09:00:00-03:00",
+      "provenance": "source"
+    },
+    {
+      "id": "topic.observatory",
+      "category": "topic",
+      "label": "Observatory operations",
+      "provenance": "source"
+    }
+  ],
+  "edges": [
+    { "source": "person.ada-chen", "target": "org.observatory-lab", "label": "member of", "provenance": "source" },
+    { "source": "person.ada-chen", "target": "project.sensor-array", "label": "leads", "evidence": "Ada Chen walked the team through the calibration backlog.", "provenance": "source" },
+    { "source": "memory.2026-10-28-sensor-review", "target": "project.sensor-array", "label": "about", "provenance": "source" },
+    { "source": "memory.2026-10-28-sensor-review", "target": "topic.observatory", "label": "about", "provenance": "source" },
+    { "source": "memory.2026-10-28-sensor-review", "target": "concept.signal-calibration", "label": "mentions", "provenance": "source" },
+    { "source": "project.sensor-array", "target": "tech.python", "label": "uses", "provenance": "source" },
+    { "source": "project.sensor-array", "target": "place.atacama-site", "label": "located at", "provenance": "source" },
+    { "source": "event.2026-11-05-field-test", "target": "project.sensor-array", "label": "part of", "provenance": "source" },
+    { "source": "concept.signal-calibration", "target": "project.sensor-array", "label": "applies to", "description": "Calibration is the core technique the upgrade depends on.", "provenance": "ai_inferred" }
+  ]
+}

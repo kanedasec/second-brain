@@ -18,7 +18,7 @@ The product must make epistemic boundaries obvious:
 
 - Python 3.13, FastAPI, Pydantic, Jinja, and SQLite.
 - Server-rendered HTML with a small dependency-free JavaScript layer.
-- `app/schemas.py` is the canonical ingestion contract.
+- `app/schemas.py` is the canonical ingestion contract. It defines two bundle formats: `KnowledgeBundle` (schema 1.0, the editorial memory records) and `GraphBundle` (schema 2.0, a node-link knowledge graph of `nodes[]` + directional `edges[]` with referential integrity). `/import` dispatches on `schema_version`. The graph view (force-directed, client-side) is the primary surface; it unifies author-imported v2 graphs with a namespaced projection of v1 memory records, so both data shapes appear in one graph. Grounding carries into v2 as node/edge `provenance` (`source` vs `ai_inferred`) plus `evidence`/`source`.
 - `app/content/ai-ingestion-prompt.md` contains the human instructions; `app/prompt.py` appends the schema generated from Pydantic.
 - `app/db.py` owns schema initialization, atomic imports, search, topic dossiers, and task views.
 - `app/backup.py` owns consistent weekly backups and retention.

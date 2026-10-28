@@ -124,3 +124,38 @@ def test_production_auth_protects_data_but_not_readiness(settings):
         assert protected_client.get("/ready").status_code == 200
         assert protected_client.get("/").status_code == 401
         assert protected_client.get("/", headers={"Authorization": f"Basic {token}"}).status_code == 200
+
+
+def import_graph(client, example_graph):
+    form = client.get("/import")
+    assert form.status_code == 200
+    csrf_token = client.cookies["second_brain_csrf"]
+    return client.post(
+        "/import",
+        data={"csrf_token": csrf_token},
+        files={"files": ("graph.json", json.dumps(example_graph), "application/json")},
+    )
+
+
+def test_graph_import_and_graph_json(client, example_graph):
+    response = import_graph(client, example_graph)
+    assert response.status_code == 200
+    assert "Imported graph" in response.text
+
+    graph = client.get("/graph.json").json()
+    assert len(graph["nodes"]) == 9
+    assert len(graph["edges"]) == 9
+
+    detail = client.get("/nodes/project.sensor-array")
+    assert detail.status_code == 200
+    assert detail.json()["category"] == "project"
+    assert client.get("/nodes/does.not-exist").status_code == 404
+
+
+def test_graph_prompt_and_schema_are_retrievable(client):
+    prompt = client.get("/graph-prompt.txt")
+    assert prompt.status_code == 200
+    assert "knowledge graph" in prompt.text.lower()
+    schema = client.get("/graph-schema.json")
+    assert schema.status_code == 200
+    assert schema.json()["properties"]["schema_version"]["const"] == "2.0"

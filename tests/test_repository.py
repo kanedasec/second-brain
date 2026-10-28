@@ -41,3 +41,76 @@ def test_exact_bundle_cannot_be_imported_twice(settings, example_bundle):
     repository.import_bundle(bundle, "example.json", raw)
     with pytest.raises(DuplicateBundleError):
         repository.import_bundle(bundle, "example.json", raw)
+
+
+def test_graph_import_payload_and_node_detail(settings, example_graph):
+    from app.schemas import GraphBundle
+
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    raw = json.dumps(example_graph).encode()
+    bundle = GraphBundle.model_validate(example_graph)
+
+    counts = repository.import_graph_bundle(bundle, "graph.json", raw)
+    assert counts == {"nodes": 9, "edges": 9}
+    assert repository.graph_stats() == {"graph_nodes": 9, "graph_edges": 9}
+
+    payload = repository.graph_payload()
+    assert len(payload["nodes"]) == 9
+    assert len(payload["edges"]) == 9
+
+    detail = repository.node_detail("project.sensor-array")
+    assert detail is not None
+    assert detail["category"] == "project"
+    # incoming edges from people, memory, event, concept; outgoing to tech and place
+    labels = {n["edge"]["label"] for n in detail["neighbors"]}
+    assert {"leads", "uses", "located at", "part of"} <= labels
+
+    # re-importing the identical file is rejected by checksum
+    with pytest.raises(DuplicateBundleError):
+        repository.import_graph_bundle(bundle, "graph.json", raw)
+
+
+def test_graph_nodes_upsert_across_imports(settings, example_graph):
+    from app.schemas import GraphBundle
+
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(example_graph), "a.json", json.dumps(example_graph).encode()
+    )
+
+    second = {
+        "schema_version": "2.0",
+        "generated_at": "2026-10-29T10:00:00-03:00",
+        "generator": {"provider": "example"},
+        "nodes": [
+            {"id": "person.ada-chen", "category": "person", "label": "Ada Chen (lead)"},
+            {"id": "person.rui-silva", "category": "person", "label": "Rui Silva"},
+        ],
+        "edges": [
+            {"source": "person.rui-silva", "target": "person.ada-chen", "label": "reports to"}
+        ],
+    }
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(second), "b.json", json.dumps(second).encode()
+    )
+
+    stats = repository.graph_stats()
+    assert stats["graph_nodes"] == 10  # 9 + 1 new; ada-chen merged, not duplicated
+    detail = repository.node_detail("person.ada-chen")
+    assert detail["label"] == "Ada Chen (lead)"  # updated by the second import
+
+
+def test_graph_payload_projects_v1_memories(settings, example_bundle):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    repository.import_bundle(
+        KnowledgeBundle.model_validate(example_bundle),
+        "mem.json",
+        json.dumps(example_bundle).encode(),
+    )
+    payload = repository.graph_payload()
+    categories = {node["category"] for node in payload["nodes"]}
+    assert "memory" in categories and "topic" in categories
+    assert any(edge["label"] == "about" for edge in payload["edges"])
