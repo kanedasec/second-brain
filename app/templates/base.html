@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#f3efe5">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07070d">
   <title>{% block title %}Second Brain{% endblock %}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
@@ -23,8 +23,8 @@
       <span></span><span></span>
     </button>
     <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
-      <a href="/graph" {% if current_path == '/graph' %}aria-current="page"{% endif %}>Graph</a>
       <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Memories</a>
+      <a href="/graph" {% if current_path == '/graph' %}aria-current="page"{% endif %}>Graph</a>
       <a href="/tasks" {% if current_path == '/tasks' %}aria-current="page"{% endif %}>Tasks</a>
       <a href="/import" {% if current_path == '/import' %}aria-current="page"{% endif %}>Import</a>
       <a href="/prompt" {% if current_path == '/prompt' %}aria-current="page"{% endif %}>AI prompt</a>

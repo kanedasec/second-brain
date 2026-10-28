@@ -10,18 +10,18 @@
 
   // Category palette — warm paper, one electric-blue accent for memories.
   const COLORS = {
-    memory: '#3157ed',
-    person: '#2f6df0',
-    organization: '#7c5cff',
-    project: '#1e6b4a',
-    concept: '#b8860b',
-    event: '#d94d35',
-    technology: '#3a7d44',
-    place: '#9c6b3f',
-    topic: '#5b6472',
-    other: '#9aa0a6',
+    memory: '#00e6ff',
+    person: '#fced1a',
+    organization: '#b26bff',
+    project: '#39ff7a',
+    concept: '#ff8a3d',
+    event: '#ff3366',
+    technology: '#00e0c8',
+    place: '#ffae2e',
+    topic: '#9aa0c8',
+    other: '#8a8ca0',
   };
-  const INK = '#16201d';
+  const INK = '#e9ecff';
   const colorFor = (node) => COLORS[node.category] || COLORS.other;
 
   const escapeHtml = (value) =>
@@ -75,9 +75,9 @@
     .linkColor((link) => {
       const active = selectedId
         && (idOf(link.source) === selectedId || idOf(link.target) === selectedId);
-      if (active) return 'rgba(26,75,216,0.75)';
-      if (selectedId) return 'rgba(43,38,34,0.08)';
-      return link.provenance === 'ai_inferred' ? 'rgba(43,38,34,0.28)' : 'rgba(43,38,34,0.18)';
+      if (active) return 'rgba(0,230,255,0.85)';
+      if (selectedId) return 'rgba(233,236,255,0.06)';
+      return link.provenance === 'ai_inferred' ? 'rgba(255,46,151,0.42)' : 'rgba(233,236,255,0.2)';
     })
     .linkLineDash((link) => (link.provenance === 'ai_inferred' ? [3, 3] : null))
     .onNodeClick((node) => {

@@ -27,7 +27,7 @@ The product must make epistemic boundaries obvious:
 
 ## Design language
 
-The interface is an editorial “memory atlas”: warm paper, dark ink, one electric-blue accent, serif display type, compact metadata, visible rules, and timeline markers. Preserve the asymmetric editorial layout, strong keyboard focus, responsive collapse, and reduced-motion behavior. Avoid generic dashboard styling or decorative effects that reduce readability.
+The interface is a **Cyberpunk 2077 / Edgerunners / Akira**-inspired "Neo-Tokyo night": near-black background with a faint neon grid, CRT scanlines, and cyan/magenta/yellow corner glows. Primary accent is neon cyan (`--blue` is remapped to cyan), with Cyberpunk signature yellow (`--yellow`), Akira red (`--red`), and Edgerunners magenta (`--magenta`) as secondary accents; `--green` is neon jade. Display type is **Orbitron** (self-hosted at `app/static/fonts/orbitron.woff2`, variable, loaded via `@font-face` — no CDN, CSP `font-src 'self'`), uppercase, with neon text-glow; body text stays in the sans stack for readability. Panels are dark glass with notched (`clip-path`) corners and neon hairline borders/glows; buttons and the graph HUD use the same angular neon language. The stylesheet is token-driven, so the theme lives mostly in the `:root` tokens plus a cyberpunk enhancement layer at the end of `app/static/app.css`; graph node/edge colors live in `app/static/graph.js`. Preserve visible neon focus rings, responsive collapse, and reduced-motion support (the scanline sweep and title glitch are disabled under `prefers-reduced-motion`).
 
 ## Invariants
 
