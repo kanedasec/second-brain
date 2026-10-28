@@ -7,8 +7,14 @@
   const panelClose = document.getElementById('node-panel-close');
   const legendList = document.getElementById('graph-legend-list');
   const emptyNote = document.getElementById('graph-empty');
+  const searchInput = document.getElementById('graph-search-input');
+  const searchCount = document.getElementById('graph-search-count');
+  const aiToggle = document.getElementById('graph-ai-toggle');
+  const resetBtn = document.getElementById('graph-reset');
+  const showAllBtn = document.getElementById('graph-show-all');
 
-  // Category palette — warm paper, one electric-blue accent for memories.
+  const PROGRESSIVE_CAP = 400; // nodes shown before progressive disclosure kicks in
+
   const COLORS = {
     memory: '#00e6ff',
     person: '#fced1a',
@@ -22,9 +28,10 @@
     other: '#8a8ca0',
   };
   const INK = '#e9ecff';
+  const ACCENT = '#fced1a';
   const colorFor = (node) => COLORS[node.category] || COLORS.other;
 
-  // UI strings (panel only — never node content)
+  // UI strings (chrome only — never node content)
   const LANG = document.documentElement.lang || 'en';
   const STR = {
     'pt-BR': {
@@ -36,6 +43,11 @@
       'Loading…': 'Carregando…',
       'Could not load this node.': 'Não foi possível carregar este nó.',
       'Could not load the graph.': 'Não foi possível carregar o grafo.',
+      'Isolate': 'Isolar',
+      'Show all': 'Mostrar tudo',
+      'no matches': 'nenhuma correspondência',
+      'match': 'correspondência',
+      'matches': 'correspondências',
     },
   };
   const tr = (s) => (STR[LANG] && STR[LANG][s]) || s;
@@ -45,36 +57,75 @@
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
     ));
 
+  const idOf = (ref) => (typeof ref === 'object' && ref ? ref.id : ref);
+
+  // --- exploration state --------------------------------------------------
   let selectedId = null;
-  let connected = new Set(); // node ids adjacent to the selection
+  let connected = new Set();
+  let searchTerm = '';
+  const hiddenCats = new Set();
+  let showAi = true;
+  let isolateId = null;
+  let isolateSet = new Set();
+  let progThreshold = 0; // min degree to show when progressively disclosed
+  let showAllNodes = false;
+
+  const matches = (node) =>
+    !searchTerm || (node.label || '').toLowerCase().includes(searchTerm);
+
+  function nodeVisible(node) {
+    if (hiddenCats.has(node.category)) return false;
+    if (isolateId && node.id !== isolateId && !isolateSet.has(node.id)) return false;
+    if (progThreshold && !showAllNodes && !isolateId && (node.__degree || 0) < progThreshold) {
+      return false;
+    }
+    return true;
+  }
+
+  function linkVisible(link) {
+    if (!showAi && link.provenance === 'ai_inferred') return false;
+    const s = allNodesById.get(idOf(link.source));
+    const t = allNodesById.get(idOf(link.target));
+    return !!(s && t && nodeVisible(s) && nodeVisible(t));
+  }
+
+  function refresh() {
+    // Re-assigning the accessors makes force-graph re-evaluate and redraw.
+    Graph.nodeVisibility(nodeVisible).linkVisibility(linkVisible);
+  }
 
   const Graph = ForceGraph()(mount)
     .nodeId('id')
     .nodeLabel((node) => `${escapeHtml(node.label)} · ${node.category}`)
     .nodeRelSize(5)
+    .nodeVisibility(nodeVisible)
+    .linkVisibility(linkVisible)
     .linkLabel((link) => escapeHtml(link.label || ''))
     .linkDirectionalArrowLength((link) => (link.directed === false ? 0 : 4))
     .linkDirectionalArrowRelPos(1)
     .linkCurvature(0.08)
     .cooldownTicks(120)
     .nodeCanvasObject((node, ctx, scale) => {
-      const faded = selectedId && node.id !== selectedId && !connected.has(node.id);
+      const dimSel = selectedId && node.id !== selectedId && !connected.has(node.id);
+      const dimSearch = searchTerm && !matches(node);
+      const faded = dimSel || dimSearch;
+      const hit = searchTerm && matches(node);
       const radius = node.id === selectedId ? 7 : 5;
-      ctx.globalAlpha = faded ? 0.25 : 1;
+      ctx.globalAlpha = faded ? 0.18 : 1;
 
       ctx.beginPath();
       ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
       ctx.fillStyle = colorFor(node);
       ctx.fill();
-      if (node.id === selectedId) {
-        ctx.lineWidth = 2 / scale;
-        ctx.strokeStyle = INK;
+      if (node.id === selectedId || hit) {
+        ctx.lineWidth = (node.id === selectedId ? 2 : 2.5) / scale;
+        ctx.strokeStyle = node.id === selectedId ? INK : ACCENT;
         ctx.stroke();
       }
 
-      if (scale > 1.4 || node.id === selectedId || connected.has(node.id)) {
+      if (scale > 1.4 || node.id === selectedId || connected.has(node.id) || hit) {
         const fontSize = Math.max(11 / scale, 2.5);
-        ctx.font = `${fontSize}px Georgia, 'Times New Roman', serif`;
+        ctx.font = `${fontSize}px Inter, system-ui, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillStyle = INK;
@@ -92,7 +143,7 @@
       const active = selectedId
         && (idOf(link.source) === selectedId || idOf(link.target) === selectedId);
       if (active) return 'rgba(0,230,255,0.85)';
-      if (selectedId) return 'rgba(233,236,255,0.06)';
+      if (selectedId || searchTerm) return 'rgba(233,236,255,0.05)';
       return link.provenance === 'ai_inferred' ? 'rgba(255,46,151,0.42)' : 'rgba(233,236,255,0.2)';
     })
     .linkLineDash((link) => (link.provenance === 'ai_inferred' ? [3, 3] : null))
@@ -103,22 +154,36 @@
     })
     .onBackgroundClick(() => clearSelection());
 
-  const idOf = (ref) => (typeof ref === 'object' && ref ? ref.id : ref);
+  const allNodesById = new Map();
 
   function sizeToContainer() {
     Graph.width(mount.clientWidth).height(mount.clientHeight);
   }
   window.addEventListener('resize', sizeToContainer);
 
+  // --- legend as category filters ----------------------------------------
   function buildLegend(categories) {
     legendList.replaceChildren(...categories.map((category) => {
       const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'legend-item';
+      btn.setAttribute('aria-pressed', 'true');
       const swatch = document.createElement('span');
       swatch.className = 'legend-swatch';
       swatch.style.background = COLORS[category] || COLORS.other;
       const label = document.createElement('span');
       label.textContent = category;
-      li.append(swatch, label);
+      btn.append(swatch, label);
+      btn.addEventListener('click', () => {
+        if (hiddenCats.has(category)) hiddenCats.delete(category);
+        else hiddenCats.add(category);
+        const on = !hiddenCats.has(category);
+        btn.setAttribute('aria-pressed', String(on));
+        btn.classList.toggle('is-off', !on);
+        refresh();
+      });
+      li.append(btn);
       return li;
     }));
   }
@@ -175,6 +240,25 @@
     return `<dl class="panel-meta">${rows}</dl>`;
   }
 
+  function setIsolate(nodeId) {
+    isolateId = nodeId;
+    isolateSet = new Set();
+    if (nodeId) {
+      for (const link of Graph.graphData().links) {
+        const s = idOf(link.source);
+        const t = idOf(link.target);
+        if (s === nodeId) isolateSet.add(t);
+        else if (t === nodeId) isolateSet.add(s);
+      }
+    }
+    refresh();
+    if (nodeId) {
+      Graph.zoomToFit(500, 70, (n) => n.id === nodeId || isolateSet.has(n.id));
+    } else {
+      Graph.zoomToFit(500, 60);
+    }
+  }
+
   async function openPanel(nodeId) {
     panel.hidden = false;
     panelBody.innerHTML = `<p class="panel-loading">${tr('Loading…')}</p>`;
@@ -188,6 +272,7 @@
       return;
     }
 
+    const isolated = isolateId === nodeId;
     const record = detail.record_id
       ? `<a class="panel-record" href="/memories/${encodeURIComponent(detail.record_id)}">${tr('Open full memory →')}</a>`
       : '';
@@ -200,11 +285,19 @@
       <h2 class="panel-title">${escapeHtml(detail.label)}</h2>
       ${detail.description ? `<p class="panel-desc">${escapeHtml(detail.description)}</p>` : ''}
       ${detail.occurred_at ? `<p class="panel-when">${escapeHtml(detail.occurred_at)}</p>` : ''}
+      <div class="panel-tools">
+        <button type="button" class="panel-isolate" data-isolated="${isolated}">${isolated ? tr('Show all') : tr('Isolate')}</button>
+      </div>
       ${sourceMarkup(detail)}
       ${metaMarkup(detail)}
       ${record}
       ${neighborMarkup(detail)}
     `;
+
+    panelBody.querySelector('.panel-isolate')?.addEventListener('click', () => {
+      setIsolate(isolateId === nodeId ? null : nodeId);
+      openPanel(nodeId); // refresh button label
+    });
 
     panelBody.querySelectorAll('.node-link').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -219,12 +312,66 @@
     panel.focus();
   }
 
+  // --- toolbar wiring -----------------------------------------------------
+  function updateSearchCount() {
+    if (!searchCount) return;
+    if (!searchTerm) { searchCount.textContent = ''; return; }
+    const n = Graph.graphData().nodes.filter((node) => nodeVisible(node) && matches(node)).length;
+    if (n === 0) searchCount.textContent = tr('no matches');
+    else searchCount.textContent = `${n} ${n === 1 ? tr('match') : tr('matches')}`;
+  }
+
+  searchInput?.addEventListener('input', () => {
+    searchTerm = searchInput.value.trim().toLowerCase();
+    refresh();
+    updateSearchCount();
+  });
+  searchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && searchTerm) {
+      e.preventDefault();
+      const hits = Graph.graphData().nodes.filter((n) => nodeVisible(n) && matches(n));
+      if (hits.length) Graph.zoomToFit(600, 80, (n) => nodeVisible(n) && matches(n));
+    }
+  });
+
+  aiToggle?.addEventListener('change', () => { showAi = aiToggle.checked; refresh(); });
+
+  resetBtn?.addEventListener('click', () => {
+    searchTerm = '';
+    if (searchInput) searchInput.value = '';
+    hiddenCats.clear();
+    showAi = true;
+    if (aiToggle) aiToggle.checked = true;
+    isolateId = null;
+    isolateSet = new Set();
+    showAllNodes = false;
+    clearSelection();
+    legendList.querySelectorAll('.legend-item').forEach((b) => {
+      b.setAttribute('aria-pressed', 'true');
+      b.classList.remove('is-off');
+    });
+    updateProgButton();
+    refresh();
+    updateSearchCount();
+    Graph.zoomToFit(500, 60);
+  });
+
+  function updateProgButton() {
+    if (!showAllBtn) return;
+    showAllBtn.hidden = !(progThreshold && !showAllNodes);
+  }
+  showAllBtn?.addEventListener('click', () => {
+    showAllNodes = true;
+    updateProgButton();
+    refresh();
+    Graph.zoomToFit(600, 60);
+  });
+
   panelClose.addEventListener('click', clearSelection);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !panel.hidden) clearSelection();
   });
 
-  // Respect reduced-motion: freeze the simulation quickly.
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   fetch('/graph.json')
@@ -235,22 +382,34 @@
         emptyNote.hidden = false;
         return;
       }
+      // Degrees for progressive disclosure + hub emphasis.
+      for (const node of data.nodes) { node.__degree = 0; allNodesById.set(node.id, node); }
+      for (const edge of data.edges) {
+        const s = allNodesById.get(idOf(edge.source));
+        const t = allNodesById.get(idOf(edge.target));
+        if (s) s.__degree += 1;
+        if (t) t.__degree += 1;
+      }
+      // Progressive disclosure: for large graphs, start with the highest-degree
+      // nodes (capped), and expose "show all" to reveal the rest.
+      if (data.nodes.length > PROGRESSIVE_CAP) {
+        const degrees = data.nodes.map((n) => n.__degree).sort((a, b) => b - a);
+        progThreshold = degrees[PROGRESSIVE_CAP - 1] || 1;
+      }
+      updateProgButton();
+
       const categories = [...new Set(data.nodes.map((n) => n.category))].sort();
       buildLegend(categories);
 
       let didFit = false;
       Graph.onEngineStop(() => {
-        if (!didFit) {
-          Graph.zoomToFit(500, 60);
-          didFit = true;
-        }
+        if (!didFit) { Graph.zoomToFit(500, 60); didFit = true; }
       });
       if (reduceMotion) {
         Graph.cooldownTicks(0);
         Graph.d3AlphaDecay(0.2);
       }
       Graph.graphData({ nodes: data.nodes, links: data.edges });
-      // Fallback fit in case the engine settles before the stop handler binds.
       setTimeout(() => { if (!didFit) { Graph.zoomToFit(500, 60); didFit = true; } }, 1500);
     })
     .catch(() => {

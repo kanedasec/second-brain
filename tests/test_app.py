@@ -167,6 +167,10 @@ def test_graph_page_loads_viewer(client):
     assert "/static/vendor/force-graph.min.js" in response.text
     assert "/static/graph.js" in response.text
     assert 'id="graph-canvas"' in response.text
+    # Phase 3 exploration controls
+    assert 'id="graph-search-input"' in response.text
+    assert 'id="graph-ai-toggle"' in response.text
+    assert 'id="graph-reset"' in response.text
 
 
 def test_language_toggle_sets_cookie_and_translates(client, example_bundle):

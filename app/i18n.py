@@ -119,6 +119,11 @@ _PT_BR: dict[str, str] = {
     "Interactive force-directed knowledge graph. Drag to move nodes, scroll to zoom, click a node for details.":
         "Grafo de conhecimento interativo com força dirigida. Arraste para mover nós, role para dar zoom, clique em um nó para ver detalhes.",
     "Categories": "Categorias",
+    "Graph controls": "Controles do grafo",
+    "Search nodes": "Pesquisar nós",
+    "AI links": "Links de IA",
+    "Reset": "Redefinir",
+    "Show all nodes": "Mostrar todos os nós",
     "No graph yet.": "Nenhum grafo ainda.",
     "a schema 2.0 graph, or": "um grafo de esquema 2.0, ou",
     "get the AI prompt": "obtenha o prompt de IA",
