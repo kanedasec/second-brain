@@ -1,74 +1,63 @@
-# Application CI/CD template
+# Second Brain
 
-Private template repository for applications built on the `kanedasec`
-DevSecOps lab platform.
+A private, self-hosted memory atlas for structured notes, email summaries, briefings, diary entries, and recording transcripts.
 
-This repository is intentionally an onboarding kit rather than a runnable
-sample application. It provides reviewed blueprints for:
+Second Brain deliberately keeps the AI outside the application. You copy the built-in prompt into ChatGPT, Claude, Copilot, or another model, add your source material, and import the resulting JSON. The app validates every field before storing it.
 
-- pull-request CI and differential security;
-- commit-SHA-tagged GHCR publishing;
-- GitHub Environment-controlled deployment;
-- ephemeral Tailscale access to the VPS;
-- forced SSH commands and restricted sudo;
-- Docker Compose runtime definitions with no application host ports;
-- Caddy-only public ingress and HTTPS smoke tests.
+## What it does
 
-## Start a new application
+- browses memories by chronology, topic, date range, and full-context search;
+- separates source-grounded facts from general-knowledge explanations;
+- shows explicit commitments as overdue, upcoming, later, or unscheduled;
+- groups grounded facts and unanswered questions into topic dossiers;
+- marks all model-generated recommendations as AI advice;
+- provides the current prompt and JSON Schema from the web interface;
+- protects private routes with HTTP Basic authentication in production;
+- creates an integrity-checked SQLite backup every Friday at 23:55 and removes backups older than 93 days.
 
-Create a repository from this template:
+## Local development
 
-```bash
-gh repo create kanedasec/NEW_APPLICATION \
-  --private \
-  --template kanedasec/application-template \
-  --clone
-```
-
-Then enter the repository and read `AGENTS.md` before enabling workflows:
+Requires Python 3.13.
 
 ```bash
-cd NEW_APPLICATION
-sed -n '1,260p' AGENTS.md
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --requirement requirements-dev.txt
+uvicorn app.main:app --reload
 ```
 
-Choose one CI/CD blueprint:
+Open `http://127.0.0.1:8000`. Development mode allows local access without credentials. To exercise authentication, copy `.env.example` into your own untracked environment configuration and set both credential variables.
 
-```text
-blueprints/github/ci-cd.python.yaml
-blueprints/github/ci-cd.node.yaml
-blueprints/github/ci-cd.python-node.yaml
+Run the tests:
+
+```bash
+python -m pytest -q tests
 ```
 
-The complete onboarding sequence is in
-[`docs/onboarding.md`](docs/onboarding.md).
+The synthetic file in [`examples/example-memory.json`](examples/example-memory.json) is ready to import.
 
-## What a GitHub template does not copy
+## Ingestion flow
 
-Repository templates copy Git files. They do not copy:
+1. Open `/prompt` and copy or download the complete prompt.
+2. Paste it into an AI, followed by the source text after the divider.
+3. Save the AI response as a `.json` file without Markdown fences.
+4. Upload one or more files at `/import`.
+5. Fix any schema errors reported by the importer; invalid bundles are never partially written.
 
-- repository visibility decisions;
-- branch rulesets or required status checks;
-- GitHub Environments, secrets, or variables;
-- SGP Manager application objects and policy configuration;
-- Tailscale credentials or policy;
-- GHCR package visibility;
-- DNS records;
-- VPS Compose files, deployment scripts, or Caddy configuration.
+The versioned instructions are in [`app/content/ai-ingestion-prompt.md`](app/content/ai-ingestion-prompt.md). The application appends the JSON Schema generated directly from the Pydantic models, so the prompt and validation contract cannot drift independently.
 
-Those controls must be configured for every new application using the
-onboarding checklist.
+## Storage and privacy
 
-## Platform trust root
+The application uses SQLite in WAL mode. Production data lives on a persistent volume and is not baked into the container image. Search terms and private routes are not written to application access logs by the production container command.
 
-Application workflows must call `kanedasec/platform-workflows` using a full
-40-character commit SHA. Never reference `main` or a mutable release tag.
+Production refuses to start unless `SECOND_BRAIN_USERNAME` and a password of at least 16 characters are configured. `/ready` remains public for container and deployment health checks; all knowledge routes require authentication.
 
-The current reviewed example pin in the blueprints is:
+## Deployment
 
-```text
-d2f64a7d70a3112c7a99687e60963be804306a31
-```
+The repository calls `kanedasec/platform-workflows` at immutable commit `2358c3996ce347e42ee8dfd09e2cba68a74a30bf` for Python CI, container publishing, SGP policy evaluation, and Tailscale/SSH deployment. Runtime assets are in [`deploy/`](deploy/), and the full operator checklist is in [`docs/onboarding.md`](docs/onboarding.md).
 
-Agents must verify that the selected revision still contains every referenced
-workflow and action before using a newer revision.
+If SGP Manager is unavailable, every registered scanner still runs and low, medium, high, and critical findings all block with no bypasses. Clean reports allow delivery to continue; failed scanners and missing or malformed evidence still block publishing and deployment.
+
+## Architecture
+
+See [`docs/architecture.md`](docs/architecture.md) for the data and trust boundaries. Agent-facing project context is maintained in [`memory.md`](memory.md).

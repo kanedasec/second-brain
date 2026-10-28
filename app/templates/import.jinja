@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Import memories · Second Brain{% endblock %}
+{% block content %}
+<section class="import-page reveal">
+  <header class="page-hero compact-hero">
+    <div class="eyebrow"><span>03</span> Import desk</div>
+    <h1>Bring the day<br><em>into focus.</em></h1>
+    <p class="lede">Upload strict JSON produced with the Second Brain prompt. Files are validated before any memory is stored.</p>
+  </header>
+
+  <div class="import-layout">
+    <form class="upload-panel" method="post" action="/import" enctype="multipart/form-data">
+      <input name="csrf_token" type="hidden" value="{{ csrf_token }}">
+      <label class="drop-zone" for="files">
+        <span class="drop-icon" aria-hidden="true">↥</span>
+        <strong>Drop JSON files here</strong>
+        <span>or choose from your device</span>
+        <small>Up to {{ max_upload_mb }} MB per file</small>
+      </label>
+      <input id="files" name="files" type="file" accept="application/json,.json" multiple required>
+      <div id="file-list" class="file-list" aria-live="polite"></div>
+      <button class="button button-dark button-wide" type="submit">Validate & import</button>
+    </form>
+    <aside class="import-notes">
+      <div class="section-heading"><span>Method</span><h2>Three steps</h2></div>
+      <ol>
+        <li><span>01</span><div><strong>Copy the prompt</strong><p>Open it in ChatGPT, Claude, Copilot, or another capable model.</p></div></li>
+        <li><span>02</span><div><strong>Add your source</strong><p>Paste notes, email, briefings, or transcript text after the divider.</p></div></li>
+        <li><span>03</span><div><strong>Import the JSON</strong><p>Save the model’s JSON response and upload it here.</p></div></li>
+      </ol>
+      <a class="text-link" href="/prompt">Open the AI prompt →</a>
+    </aside>
+  </div>
+
+  {% if results %}
+  <section class="import-results" aria-live="polite">
+    <div class="section-heading"><span>Result</span><h2>Import report</h2></div>
+    {% for result in results %}
+    <article class="result result-{{ result.status }}"><span aria-hidden="true">{% if result.status == 'success' %}✓{% else %}!{% endif %}</span><div><h3>{{ result.name }}</h3><p>{{ result.message }}{% if result.count %} {{ result.count }} memories.{% endif %}</p></div></article>
+    {% endfor %}
+    {% if results|selectattr('status', 'equalto', 'success')|list %}<a class="button button-accent" href="/">View imported memories</a>{% endif %}
+  </section>
+  {% endif %}
+</section>
+{% endblock %}

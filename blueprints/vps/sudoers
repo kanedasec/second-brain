@@ -1,1 +1,0 @@
-deployer ALL=(root) NOPASSWD: /usr/local/sbin/__DEPLOY_COMMAND__

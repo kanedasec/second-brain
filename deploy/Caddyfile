@@ -1,0 +1,3 @@
+second-brain.kanedasec.com.br {
+	reverse_proxy second-brain:8000
+}

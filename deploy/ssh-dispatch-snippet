@@ -1,0 +1,4 @@
+# Add this exact branch to the root-owned forced SSH dispatcher.
+deploy-second-brain)
+    script=/usr/local/sbin/deploy-second-brain
+    ;;

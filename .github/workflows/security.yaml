@@ -1,0 +1,72 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  pipeline-config:
+    name: Security pipeline configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: security-policy
+    permissions:
+      contents: read
+    outputs:
+      gates: ${{ steps.resolve.outputs.gates }}
+    steps:
+      - name: Resolve central security pipeline
+        id: resolve
+        uses: kanedasec/platform-workflows/actions/sgp-pipeline-config@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
+        env:
+          SGP_MANAGER_API_KEY: ${{ secrets.SGP_MANAGER_API_KEY }}
+
+      - name: Preserve resolved pipeline evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sgp-pipeline-configuration
+          path: ${{ steps.resolve.outputs.configuration_path }}
+          if-no-files-found: error
+          retention-days: 7
+
+  security-scans:
+    name: Full repository security
+    needs: pipeline-config
+    uses: kanedasec/platform-workflows/.github/workflows/security.yaml@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
+    with:
+      gates: ${{ needs.pipeline-config.outputs.gates }}
+
+  policy-gate:
+    name: Security policy (SGP Manager)
+    if: always()
+    needs: [pipeline-config, security-scans]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: security-policy
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require completed guardrail evidence
+        env:
+          PIPELINE_RESULT: ${{ needs.pipeline-config.result }}
+          SCANNER_RESULT: ${{ needs.security-scans.result }}
+        run: |
+          if [[ "$PIPELINE_RESULT" != "success" || "$SCANNER_RESULT" != "success" ]]; then
+            echo "Guardrail execution failed: publishing and deployment remain blocked."
+            echo "pipeline=$PIPELINE_RESULT scanners=$SCANNER_RESULT"
+            exit 1
+          fi
+
+      - name: Apply online bypasses or strict offline policy
+        uses: kanedasec/platform-workflows/actions/sgp-policy-from-artifacts@2358c3996ce347e42ee8dfd09e2cba68a74a30bf
+        env:
+          SGP_MANAGER_API_KEY: ${{ secrets.SGP_MANAGER_API_KEY }}
+        with:
+          gates: ${{ needs.pipeline-config.outputs.gates }}

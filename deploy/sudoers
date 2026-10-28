@@ -1,0 +1,1 @@
+deployer ALL=(root) NOPASSWD: /usr/local/sbin/deploy-second-brain

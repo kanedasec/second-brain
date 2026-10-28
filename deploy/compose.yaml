@@ -1,0 +1,68 @@
+name: second-brain
+
+x-runtime-security: &runtime-security
+  user: "10001:10001"
+  read_only: true
+  init: true
+  restart: unless-stopped
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  tmpfs:
+    - /tmp:size=32m,mode=1777
+  volumes:
+    - /opt/data/second-brain:/data
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  app:
+    <<: *runtime-security
+    image: ghcr.io/kanedasec/second-brain-app:${IMAGE_TAG:?IMAGE_TAG must be set}
+    env_file:
+      - /opt/infra/second-brain/app.env
+    environment:
+      SECOND_BRAIN_ENVIRONMENT: production
+      SECOND_BRAIN_DATA_DIR: /data
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      proxy:
+        aliases:
+          - second-brain
+
+  backup:
+    <<: *runtime-security
+    image: ghcr.io/kanedasec/second-brain-app:${IMAGE_TAG:?IMAGE_TAG must be set}
+    command: ["python", "-m", "app.backup"]
+    healthcheck:
+      disable: true
+    env_file:
+      - /opt/infra/second-brain/app.env
+    environment:
+      SECOND_BRAIN_ENVIRONMENT: production
+      SECOND_BRAIN_DATA_DIR: /data
+    depends_on:
+      app:
+        condition: service_healthy
+    network_mode: none
+
+networks:
+  proxy:
+    external: true
+    name: proxy

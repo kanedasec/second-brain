@@ -1,6 +1,6 @@
-# This repository defines CI/CD onboarding security defaults.
+# Application source, deployment contracts, and agent guidance.
 * @kanedasec
 /.github/ @kanedasec
 /AGENTS.md @kanedasec
-/blueprints/ @kanedasec
+/deploy/ @kanedasec
 /scripts/ @kanedasec
