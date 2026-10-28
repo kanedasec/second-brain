@@ -23,6 +23,7 @@ The product must make epistemic boundaries obvious:
 - `app/db.py` owns schema initialization, atomic imports, search, topic dossiers, and task views.
 - `app/backup.py` owns consistent weekly backups and retention.
 - `app/main.py` owns routes, authentication, upload limits, origin checks, and security headers.
+- `deploy/` holds the reviewed runtime assets (Compose, Caddy route, restricted deploy script, sudoers rule, dispatcher snippet). `deploy/bootstrap-second-brain` is an idempotent, root-run script that automates onboarding phases 3-5: it validates staged assets, refuses a group/other-readable `app.env`, requires an immutable `deployment.env` tag, backs up the shared dispatcher and Caddyfile before patching, and rolls Caddy back on failure. Secret-bearing staged assets (`app.env`, `deployment.env`) are never committed. `deploy/Caddyfile` is the single source of truth for the public hostname; the CI `DEPLOY_URL` deployment variable and the DNS record must match it, or the post-deploy smoke check fails. The app reaches the shared Caddy ingress over an external `proxy` Docker network; the bootstrap creates that network if absent and starts only the shared Caddy container (never other applications).
 
 ## Design language
 

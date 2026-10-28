@@ -22,6 +22,8 @@ Never place those values in the repository, an artifact, or a command shown in l
 
 ## 3. Persistent runtime
 
+Phases 3 through 5 are automated by the reviewable, idempotent, root-run [`deploy/bootstrap-second-brain`](../deploy/bootstrap-second-brain) script. Stage the assets it expects in one directory (`compose.yaml`, `app.env`, `deployment.env`, `deploy-second-brain`, `sudoers`, `Caddyfile`), then run it as root with that directory as its only argument. It validates every asset, requires an immutable `deployment.env` tag, refuses a group- or other-readable `app.env`, backs up the shared dispatcher and Caddyfile before patching them, and restores Caddy on any validation or reload failure. The manual steps below describe what it installs; perform them by hand only if you are not using the script.
+
 Create the application infrastructure directory and a persistent data directory owned by UID/GID `10001`, the container's unprivileged runtime identity. Install:
 
 - [`deploy/compose.yaml`](../deploy/compose.yaml) as the application's Compose file;

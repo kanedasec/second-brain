@@ -1,0 +1,159 @@
+#!/bin/bash
+set -euo pipefail
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 022
+
+readonly APP_SLUG="second-brain"
+readonly APP_DIR="/opt/infra/${APP_SLUG}"
+readonly DATA_DIR="/opt/data/${APP_SLUG}"
+readonly DEPLOY_SCRIPT="/usr/local/sbin/deploy-${APP_SLUG}"
+readonly SUDOERS_PATH="/etc/sudoers.d/deploy-${APP_SLUG}"
+readonly DISPATCHER="/usr/local/sbin/ssh-deploy-sgp-manager"
+readonly CADDY_FILE="/opt/infra/caddy/Caddyfile"
+readonly CADDY_COMPOSE="/opt/infra/caddy/compose.yml"
+readonly CADDY_CONTAINER="caddy"
+readonly PROXY_NETWORK="proxy"
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+if [[ "$EUID" -ne 0 ]]; then
+    die "run this bootstrap as root"
+fi
+if [[ $# -ne 1 ]]; then
+    die "usage: bootstrap-second-brain <staged-asset-directory>"
+fi
+
+readonly SOURCE_DIR="$(realpath -- "$1")"
+readonly REQUIRED_FILES=(
+    compose.yaml
+    app.env
+    deployment.env
+    deploy-second-brain
+    sudoers
+    Caddyfile
+)
+
+for filename in "${REQUIRED_FILES[@]}"; do
+    [[ -f "$SOURCE_DIR/$filename" ]] || die "missing staged asset: $filename"
+done
+[[ -f "$DISPATCHER" ]] || die "forced-command dispatcher is missing"
+[[ -f "$CADDY_FILE" ]] || die "Caddy configuration is missing"
+[[ -f "$CADDY_COMPOSE" ]] || die "shared Caddy compose file is missing"
+command -v docker >/dev/null || die "Docker is unavailable"
+command -v visudo >/dev/null || die "visudo is unavailable"
+
+bash -n "$SOURCE_DIR/deploy-second-brain"
+grep -Eq '^IMAGE_TAG=sha-[0-9a-f]{40}$' "$SOURCE_DIR/deployment.env" \
+    || die "deployment.env does not contain an immutable image tag"
+if [[ -n "$(find "$SOURCE_DIR/app.env" -maxdepth 0 -perm /077 -print)" ]]; then
+    die "staged app.env must not be accessible by group or other users"
+fi
+
+readonly STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+readonly DISPATCHER_BACKUP="${DISPATCHER}.pre-${APP_SLUG}-${STAMP}"
+readonly CADDY_BACKUP="${CADDY_FILE}.pre-${APP_SLUG}-${STAMP}"
+readonly TEMP_DIR="$(mktemp -d /run/${APP_SLUG}-bootstrap.XXXXXX)"
+trap 'rm -rf -- "$TEMP_DIR"' EXIT
+
+install -d -o root -g root -m 0750 "$APP_DIR"
+install -d -o 10001 -g 10001 -m 0750 "$DATA_DIR"
+install -o root -g root -m 0644 "$SOURCE_DIR/compose.yaml" "$APP_DIR/compose.yaml"
+install -o root -g root -m 0600 "$SOURCE_DIR/app.env" "$APP_DIR/app.env"
+install -o root -g root -m 0644 "$SOURCE_DIR/deployment.env" "$APP_DIR/deployment.env"
+install -o root -g root -m 0755 "$SOURCE_DIR/deploy-second-brain" "$DEPLOY_SCRIPT"
+
+install -o root -g root -m 0440 "$SOURCE_DIR/sudoers" "$TEMP_DIR/sudoers"
+visudo -cf "$TEMP_DIR/sudoers" >/dev/null
+install -o root -g root -m 0440 "$TEMP_DIR/sudoers" "$SUDOERS_PATH"
+
+cp --preserve=mode,ownership,timestamps -- "$DISPATCHER" "$DISPATCHER_BACKUP"
+python3 - "$DISPATCHER" "$TEMP_DIR/dispatcher" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+if "deploy-second-brain" not in source:
+    old_pattern = "^(deploy-sgp-manager|deploy-tvdash)[[:space:]]"
+    new_pattern = "^(deploy-sgp-manager|deploy-tvdash|deploy-second-brain)[[:space:]]"
+    old_case = """    deploy-tvdash)
+        script=/usr/local/sbin/deploy-tvdash
+        ;;
+    *)"""
+    new_case = """    deploy-tvdash)
+        script=/usr/local/sbin/deploy-tvdash
+        ;;
+    deploy-second-brain)
+        script=/usr/local/sbin/deploy-second-brain
+        ;;
+    *)"""
+    if source.count(old_pattern) != 1 or source.count(old_case) != 1:
+        raise SystemExit("dispatcher structure is not the reviewed version")
+    source = source.replace(old_pattern, new_pattern).replace(old_case, new_case)
+Path(sys.argv[2]).write_text(source, encoding="utf-8")
+PY
+bash -n "$TEMP_DIR/dispatcher"
+install -o root -g root -m 0755 "$TEMP_DIR/dispatcher" "$DISPATCHER"
+
+cp --preserve=mode,ownership,timestamps -- "$CADDY_FILE" "$CADDY_BACKUP"
+python3 - "$CADDY_FILE" "$SOURCE_DIR/Caddyfile" <<'PY'
+from pathlib import Path
+import sys
+
+target = Path(sys.argv[1])
+route = Path(sys.argv[2]).read_text(encoding="utf-8").strip()
+current = target.read_text(encoding="utf-8").rstrip()
+if "brain.kanedasec.com.br {" not in current:
+    target.write_text(f"{current}\n\n{route}\n", encoding="utf-8")
+PY
+chown root:root "$CADDY_FILE"
+chmod 0644 "$CADDY_FILE"
+
+image_tag="$(sed -n 's/^IMAGE_TAG=//p' "$APP_DIR/deployment.env")"
+IMAGE_TAG="$image_tag" docker compose \
+    --env-file "$APP_DIR/app.env" \
+    --env-file "$APP_DIR/deployment.env" \
+    -f "$APP_DIR/compose.yaml" config --quiet
+
+# The shared ingress network is external to every application's Compose file.
+docker network inspect "$PROXY_NETWORK" >/dev/null 2>&1 \
+    || docker network create "$PROXY_NETWORK"
+
+restore_caddyfile() {
+    cp --preserve=mode,ownership,timestamps -- "$CADDY_BACKUP" "$CADDY_FILE"
+}
+caddy_running() {
+    docker ps --format '{{.Names}}' | grep -qx "$CADDY_CONTAINER"
+}
+
+# Start or refresh ONLY the shared Caddy ingress so it loads the patched
+# Caddyfile. Other applications (for example tvdash or sgp-manager) are never
+# started here; routes whose backends are down simply return 502.
+if caddy_running; then
+    if ! docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile; then
+        restore_caddyfile
+        docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile || true
+        die "Caddy reload failed; the previous configuration was restored"
+    fi
+else
+    docker compose -f "$CADDY_COMPOSE" up -d
+    validated=0
+    for _ in $(seq 1 15); do
+        if caddy_running && docker exec "$CADDY_CONTAINER" \
+                caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+            validated=1
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$validated" -ne 1 ]]; then
+        restore_caddyfile
+        docker compose -f "$CADDY_COMPOSE" up -d || true
+        die "Caddy did not accept the new configuration; the previous Caddyfile was restored"
+    fi
+fi
+
+echo "Second Brain VPS bootstrap completed"
