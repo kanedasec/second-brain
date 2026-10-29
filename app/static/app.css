@@ -667,3 +667,18 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 .panel-export { font-family: var(--mono); font-size: .6rem; text-transform: uppercase; letter-spacing: .1em; color: var(--yellow); background: rgb(252 237 26 / 8%); border: 1px solid rgb(252 237 26 / 30%); padding: 6px 12px; cursor: pointer; clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); }
 .panel-export:hover { box-shadow: var(--glow-yellow); }
 .panel-export[data-inset="true"] { color: var(--blue); border-color: rgb(0 230 255 / 35%); background: rgb(0 230 255 / 8%); }
+
+@media (max-width: 720px) {
+  .graph-export-bar {
+    display: grid;
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    width: auto;
+    transform: none;
+  }
+  .graph-export-bar .button { min-height: 44px; }
+  .graph-export-bar #graph-export-go { justify-content: center; }
+}
