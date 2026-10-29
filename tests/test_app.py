@@ -140,7 +140,11 @@ def import_graph(client, example_graph):
 def test_graph_import_and_graph_json(client, example_graph):
     response = import_graph(client, example_graph)
     assert response.status_code == 200
-    assert "Imported graph" in response.text
+    assert "Imported graph only" in response.text
+    assert "does not create memories or tasks" in response.text
+    assert "View imported memories" not in response.text
+    assert "View graph" in response.text
+    assert "Your atlas starts empty" in client.get("/").text
 
     graph = client.get("/graph.json").json()
     assert len(graph["nodes"]) == 9
@@ -159,6 +163,33 @@ def test_graph_prompt_and_schema_are_retrievable(client):
     schema = client.get("/graph-schema.json")
     assert schema.status_code == 200
     assert schema.json()["properties"]["schema_version"]["const"] == "2.0"
+
+
+def test_unified_atlas_import_populates_all_views(client, example_atlas):
+    response = import_json(client, "atlas.json", json.dumps(example_atlas))
+    assert response.status_code == 200
+    assert "Imported unified atlas (1 memory, 2 nodes, 1 edge)" in response.text
+    assert "View imported memories" in response.text
+    assert "View graph" in response.text
+
+    title = example_atlas["memories"][0]["title"]
+    memory_id = example_atlas["memories"][0]["id"]
+    assert title in client.get("/").text
+    assert "Review the observatory sensor inventory" in client.get("/tasks").text
+    assert "Grounded facts" in client.get("/topics/observatory-project").text
+    graph = client.get("/graph.json").json()
+    assert f"mem:{memory_id}" in {node["id"] for node in graph["nodes"]}
+    assert client.get(f"/nodes/mem:{memory_id}").json()["record_id"] == memory_id
+
+
+def test_unified_atlas_prompt_and_schema_are_retrievable(client):
+    prompt = client.get("/atlas-prompt.txt")
+    assert prompt.status_code == 200
+    assert "complete Second Brain" in prompt.text
+    assert '"schema_version"' in prompt.text
+    schema = client.get("/atlas-schema.json")
+    assert schema.status_code == 200
+    assert schema.json()["properties"]["schema_version"]["const"] == "3.0"
 
 
 def test_graph_page_loads_viewer(client):
@@ -205,18 +236,23 @@ def test_prompt_library_page_and_downloads(client):
     assert page.status_code == 200
     # cards are listed but the full prompt bodies are NOT inlined in the page
     assert 'data-prompt-id="email"' in page.text
-    assert 'data-prompt-id="graph"' in page.text
+    assert 'data-prompt-id="atlas"' in page.text
     assert "Email day review" in page.text
     assert "Source material begins after this line" not in page.text  # not fully exposed
 
     email = client.get("/prompts/email.txt")
     assert email.status_code == 200
     assert "Email day review" in email.text
-    assert "Prepared for the Second Brain graph schema generator" in email.text
+    assert "Prepared for the Second Brain unified atlas generator" in email.text
 
+    atlas = client.get("/prompts/atlas.txt")
+    assert atlas.status_code == 200
+    assert '"schema_version"' in atlas.text  # schema appended for the generator
+
+    # The old graph-only prompt remains available for compatibility but is no
+    # longer advertised as the primary ingestion path.
     graph = client.get("/prompts/graph.txt")
     assert graph.status_code == 200
-    assert '"schema_version"' in graph.text  # schema appended for the generator
 
     assert client.get("/prompts/nope.txt").status_code == 404
 

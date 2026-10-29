@@ -5,11 +5,11 @@
 ```text
 Private source text
   -> external AI + versioned ingestion prompt
-  -> schema-v1 JSON bundle
+  -> unified schema-v3 JSON atlas
   -> authenticated upload
   -> Pydantic validation
   -> one SQLite transaction
-  -> memory atlas / topic dossiers / task radar
+  -> memory atlas / topic dossiers / task radar / relationship graph
 ```
 
 The application does not call an AI service. This keeps model choice flexible and prevents API credentials or source text from being sent by the service itself.
@@ -26,13 +26,13 @@ The schema separates five kinds of information:
 | Knowledge gaps | Missing or unresolved information | “What you still need” |
 | Recommendations | Must carry `ai_generated: true` | Visibly labeled AI advice |
 
-The importer forbids unknown fields, requires timezone-aware timestamps, requires evidence for facts/actions/entities, and writes an entire bundle atomically. Exact file checksums and stable memory IDs prevent accidental duplicates.
+The importer forbids unknown fields, requires timezone-aware timestamps, requires evidence for facts/actions/entities, and writes the editorial and graph representations atomically. Exact file checksums and stable memory IDs prevent accidental duplicates. Schema 1.0 memory-only and schema 2.0 graph-only bundles remain supported; the importer never guesses editorial facts or tasks from graph-only data.
 
 ## Application components
 
 - FastAPI handles HTTP, validation, authentication, and security headers.
 - Jinja templates and small progressive-enhancement JavaScript provide the interface without a frontend build step.
-- SQLite stores normalized memories, topics, facts, entities, actions, gaps, and recommendations.
+- SQLite stores normalized memories, topics, facts, entities, actions, gaps, and recommendations alongside first-class graph nodes and edges.
 - A separate process using the same immutable image schedules consistent SQLite backups.
 
 Search covers titles, summaries, context, people, facts, evidence, topics, and entity explanations. Topic pages assemble facts and gaps from all connected memories. Task status is computed at read time from explicit deadlines.

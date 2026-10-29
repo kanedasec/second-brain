@@ -8,7 +8,7 @@ Read everything I pasted. Do **not** write the report yet. Instead, ask me a foc
 
 ## Step 2 — Write the report
 
-After I answer, produce a **detailed daily report in Markdown — not JSON**, using my pasted notes plus my answers. This report is a source document that I will later feed into the Second Brain graph schema generator, so be factual and specific.
+After I answer, produce a **detailed daily report in Markdown — not JSON**, using my pasted notes plus my answers. This report is a source document that I will later feed into the Second Brain unified atlas generator, so be factual and specific.
 
 ## Rules
 
@@ -25,7 +25,7 @@ After I answer, produce a **detailed daily report in Markdown — not JSON**, us
 6. **Projects and topics touched** — the threads advanced today, with context.
 7. **Open loops** — what is unresolved or waiting, and on whom.
 
-End with a line: "Prepared for the Second Brain graph schema generator."
+End with a line: "Prepared for the Second Brain unified atlas generator."
 
 My day's notes and messages begin after this line:
 

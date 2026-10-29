@@ -5,7 +5,7 @@ import json
 import pytest
 
 from app.db import DuplicateBundleError, Repository
-from app.schemas import KnowledgeBundle
+from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 
 
 def test_import_search_topic_and_task_views(settings, example_bundle):
@@ -114,3 +114,46 @@ def test_graph_payload_projects_v1_memories(settings, example_bundle):
     categories = {node["category"] for node in payload["nodes"]}
     assert "memory" in categories and "topic" in categories
     assert any(edge["label"] == "about" for edge in payload["edges"])
+
+
+def test_unified_atlas_populates_every_repository_surface(settings, example_atlas):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    raw = json.dumps(example_atlas).encode()
+
+    counts = repository.import_atlas_bundle(
+        AtlasBundle.model_validate(example_atlas), "atlas.json", raw
+    )
+
+    assert counts == {"memories": 1, "nodes": 2, "edges": 1}
+    assert repository.stats() == {"memories": 1, "topics": 2, "open_actions": 2, "gaps": 1}
+    assert repository.graph_stats() == {"graph_nodes": 2, "graph_edges": 1}
+    assert repository.search_memories(query="LoRaWAN")[1] == 1
+    assert len(repository.list_topics()) == 2
+    assert sum(len(items) for items in repository.task_board().values()) == 2
+
+    memory_id = example_atlas["memories"][0]["id"]
+    detail = repository.node_detail(f"mem:{memory_id}")
+    assert detail is not None
+    assert detail["record_id"] == memory_id
+
+
+def test_unified_atlas_rolls_back_memories_when_graph_import_fails(
+    settings, example_atlas, example_graph
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    raw = json.dumps(example_atlas).encode()
+
+    # Reserve the atlas checksum only in graph_imports. The unified import then
+    # reaches the graph duplicate after staging its memories; the transaction
+    # must roll those memory writes back.
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(example_graph), "existing-graph.json", raw
+    )
+    with pytest.raises(DuplicateBundleError):
+        repository.import_atlas_bundle(
+            AtlasBundle.model_validate(example_atlas), "atlas.json", raw
+        )
+
+    assert repository.stats() == {"memories": 0, "topics": 0, "open_actions": 0, "gaps": 0}

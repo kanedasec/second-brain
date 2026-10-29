@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.schemas import GraphBundle, KnowledgeBundle
+from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 
 
 CONTENT_DIR = Path(__file__).with_name("content")
 PROMPT_PATH = CONTENT_DIR / "ai-ingestion-prompt.md"
 GRAPH_PROMPT_PATH = CONTENT_DIR / "graph-ingestion-prompt.md"
+ATLAS_PROMPT_PATH = CONTENT_DIR / "atlas-ingestion-prompt.md"
 
 
 def json_schema() -> dict:
@@ -17,6 +18,10 @@ def json_schema() -> dict:
 
 def graph_json_schema() -> dict:
     return GraphBundle.model_json_schema()
+
+
+def atlas_json_schema() -> dict:
+    return AtlasBundle.model_json_schema()
 
 
 def _read(name: str) -> str:
@@ -37,10 +42,15 @@ def complete_graph_prompt() -> str:
     return _complete(GRAPH_PROMPT_PATH, graph_json_schema())
 
 
+def complete_atlas_prompt() -> str:
+    return _complete(ATLAS_PROMPT_PATH, atlas_json_schema())
+
+
 # --- Prompt library ------------------------------------------------------
 #
 # Two tiers: source-preparation prompts that emit a written report, and the
-# schema generator that turns a prepared report (or raw source) into graph JSON.
+# schema generator that turns a prepared report (or raw source) into unified
+# atlas JSON for every application surface.
 # `title`/`description` are English source strings translated in the template.
 
 PROMPT_LIBRARY = [
@@ -78,15 +88,15 @@ PROMPT_LIBRARY = [
         "getter": lambda: _read("daily-report-prompt.md"),
     },
     {
-        "id": "graph",
+        "id": "atlas",
         "group": "schema",
-        "output": "graph",
-        "title": "Graph schema generator",
+        "output": "atlas",
+        "title": "Unified atlas generator",
         "description": (
-            "Turns a prepared report (or raw source) into the graph JSON the app imports."
+            "Creates one grounded JSON file for memories, topics, tasks, search, and graph."
         ),
-        "getter": complete_graph_prompt,
-        "schema_url": "/graph-schema.json",
+        "getter": complete_atlas_prompt,
+        "schema_url": "/atlas-schema.json",
     },
     {
         "id": "presentation",
@@ -102,6 +112,7 @@ PROMPT_LIBRARY = [
 ]
 
 _PROMPTS_BY_ID = {item["id"]: item for item in PROMPT_LIBRARY}
+_PROMPTS_BY_ID["graph"] = {"getter": complete_graph_prompt}
 
 
 def prompt_catalog() -> list[dict]:

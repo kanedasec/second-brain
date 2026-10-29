@@ -24,6 +24,11 @@ def example_graph() -> dict:
 
 
 @pytest.fixture
+def example_atlas() -> dict:
+    return json.loads((ROOT / "examples" / "example-atlas.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
         data_dir=tmp_path,
