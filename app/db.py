@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS actions (
     memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('open', 'done', 'cancelled')),
+    completed_at TEXT,
     due_at TEXT,
     owner TEXT,
     evidence TEXT NOT NULL,
@@ -91,6 +92,17 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 
 CREATE INDEX IF NOT EXISTS actions_status_due_idx ON actions(status, due_at);
+
+CREATE TABLE IF NOT EXISTS action_status_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE,
+    previous_status TEXT NOT NULL CHECK (previous_status IN ('open', 'done', 'cancelled')),
+    new_status TEXT NOT NULL CHECK (new_status IN ('open', 'done', 'cancelled')),
+    changed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS action_status_events_action_idx
+    ON action_status_events(action_id, changed_at DESC);
 
 CREATE TABLE IF NOT EXISTS knowledge_gaps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,6 +191,13 @@ ORDER BY CASE a.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
          a.due_at, m.occurred_at DESC
 """
 
+COMPLETED_ACTIONS_SQL = """
+SELECT a.*, m.title AS memory_title, m.occurred_at
+FROM actions a JOIN memories m ON m.id = a.memory_id
+WHERE a.status = 'done'
+ORDER BY a.completed_at DESC, a.id DESC
+"""
+
 
 def utc_iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -190,6 +209,14 @@ def slugify(value: str) -> str:
     if slug:
         return slug[:72]
     return "topic-" + hashlib.sha256(value.casefold().encode()).hexdigest()[:10]
+
+
+def normalized_label(value: str) -> str:
+    """Normalize a label for exact identity matching without truncating it."""
+
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    key = re.sub(r"[^a-z0-9]+", "-", normalized.casefold()).strip("-")
+    return key or unicodedata.normalize("NFKC", value).casefold().strip()
 
 
 class DuplicateBundleError(ValueError):
@@ -232,7 +259,19 @@ class Repository:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = NORMAL")
             connection.executescript(SCHEMA)
+            self._migrate(connection)
             connection.commit()
+
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        """Apply small forward-only migrations to databases created in place."""
+
+        action_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(actions)").fetchall()
+        }
+        if "completed_at" not in action_columns:
+            connection.execute("ALTER TABLE actions ADD COLUMN completed_at TEXT")
 
     def ready(self) -> bool:
         try:
@@ -628,11 +667,13 @@ class Repository:
         soon = utc_iso(datetime.now(UTC) + timedelta(days=14))
         with self.connect() as connection:
             rows = connection.execute(OPEN_ACTIONS_SQL).fetchall()
+            completed = connection.execute(COMPLETED_ACTIONS_SQL).fetchall()
         board: dict[str, list[dict[str, Any]]] = {
             "overdue": [],
             "upcoming": [],
             "later": [],
             "unscheduled": [],
+            "completed": [dict(row) for row in completed],
         }
         for row in rows:
             action = dict(row)
@@ -646,6 +687,125 @@ class Repository:
             else:
                 board["later"].append(action)
         return board
+
+    def complete_action(self, action_id: int) -> dict[str, Any] | None:
+        """Mark one open action done and update one existing graph node, if unique."""
+
+        completed_at = utc_iso(datetime.now(UTC))
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    """
+                    SELECT a.*, m.title AS memory_title
+                    FROM actions a JOIN memories m ON m.id = a.memory_id
+                    WHERE a.id = ?
+                    """,
+                    (action_id,),
+                ).fetchone()
+                if row is None:
+                    connection.rollback()
+                    return None
+
+                action = dict(row)
+                if action["status"] != "open":
+                    connection.commit()
+                    return action | {"changed": False, "graph_node_id": None}
+
+                connection.execute(
+                    "UPDATE actions SET status = 'done', completed_at = ? WHERE id = ?",
+                    (completed_at, action_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO action_status_events (
+                        action_id, previous_status, new_status, changed_at
+                    ) VALUES (?, 'open', 'done', ?)
+                    """,
+                    (action_id, completed_at),
+                )
+                graph_node_id = self._sync_completed_action_node(
+                    connection, action, completed_at
+                )
+                connection.commit()
+                return action | {
+                    "status": "done",
+                    "completed_at": completed_at,
+                    "changed": True,
+                    "graph_node_id": graph_node_id,
+                }
+            except Exception:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def _sync_completed_action_node(
+        connection: sqlite3.Connection,
+        action: dict[str, Any],
+        completed_at: str,
+    ) -> str | None:
+        """Update a uniquely identifiable stored node without creating one."""
+
+        candidates = []
+        title_key = normalized_label(action["title"])
+        for row in connection.execute(
+            "SELECT id, category, label, metadata_json FROM graph_nodes ORDER BY id"
+        ).fetchall():
+            if normalized_label(row["label"]) != title_key:
+                continue
+            metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+            task_like = (
+                row["category"] in {"action", "event", "other"}
+                or row["id"].startswith("action.")
+                or metadata.get("kind") in {"action", "task"}
+                or "task_status" in metadata
+            )
+            if not task_like:
+                continue
+            candidates.append((row, metadata))
+
+        if not candidates:
+            return None
+
+        memory_id = action["memory_id"]
+        explicit = [
+            item
+            for item in candidates
+            if item[1].get("memory_id") == memory_id
+            or item[1].get("action_id") == str(action["id"])
+        ]
+        if len(explicit) == 1:
+            chosen = explicit[0]
+        else:
+            memory_node_id = f"mem:{memory_id}"
+            connected_ids = {
+                row["source_id"] if row["target_id"] == memory_node_id else row["target_id"]
+                for row in connection.execute(
+                    """
+                    SELECT source_id, target_id FROM graph_edges
+                    WHERE source_id = ? OR target_id = ?
+                    """,
+                    (memory_node_id, memory_node_id),
+                ).fetchall()
+            }
+            connected = [item for item in candidates if item[0]["id"] in connected_ids]
+            if len(connected) == 1:
+                chosen = connected[0]
+            elif len(candidates) == 1:
+                chosen = candidates[0]
+            else:
+                return None
+
+        row, metadata = chosen
+        metadata |= {
+            "task_status": "done",
+            "task_completed_at": completed_at,
+        }
+        connection.execute(
+            "UPDATE graph_nodes SET metadata_json = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(metadata, ensure_ascii=False), completed_at, row["id"]),
+        )
+        return row["id"]
 
     # --- Graph (version 2.0) ---------------------------------------------
 
@@ -727,7 +887,7 @@ class Repository:
 
         by_label: dict[str, list[dict[str, Any]]] = {}
         for item in existing.values():
-            by_label.setdefault(slugify(item["label"]), []).append(item)
+            by_label.setdefault(normalized_label(item["label"]), []).append(item)
 
         node_id_map: dict[str, str] = {}
         existing_replacements: dict[str, str] = {}
@@ -764,7 +924,7 @@ class Repository:
             )
             candidates = [
                 item
-                for item in by_label.get(slugify(node.label), [])
+                for item in by_label.get(normalized_label(node.label), [])
                 if item["category"] in compatible_categories
                 and not (node.category == "memory" and item["origin"] == "projected")
             ]
@@ -1168,7 +1328,7 @@ class Repository:
         node_rows = connection.execute(
             """
             SELECT id, category, label, description, occurred_at, provenance,
-                   source_type, source_label
+                   source_type, source_label, metadata_json
             FROM graph_nodes ORDER BY id
             """
         ).fetchall()
@@ -1179,7 +1339,13 @@ class Repository:
             FROM graph_edges ORDER BY id
             """
         ).fetchall()
-        nodes = [dict(row) | {"origin": "graph"} for row in node_rows]
+        nodes = []
+        for row in node_rows:
+            node = dict(row) | {"origin": "graph"}
+            metadata_json = node.pop("metadata_json")
+            if metadata_json:
+                node["metadata"] = json.loads(metadata_json)
+            nodes.append(node)
         edges = [dict(row) | {"directed": bool(row["directed"]), "origin": "graph"} for row in edge_rows]
         return {"nodes": nodes, "edges": edges}
 
@@ -1206,11 +1372,11 @@ class Repository:
             "SELECT id, category, label FROM graph_nodes ORDER BY id"
         ).fetchall():
             authored_by_label.setdefault(
-                (row["category"], slugify(row["label"])), []
+                (row["category"], normalized_label(row["label"])), []
             ).append(row["id"])
 
         def projected_id(category: str, label: str, fallback: str) -> str:
-            matches = authored_by_label.get((category, slugify(label)), [])
+            matches = authored_by_label.get((category, normalized_label(label)), [])
             return matches[0] if len(matches) == 1 else fallback
 
         memories = connection.execute(

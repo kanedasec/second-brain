@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Task radar · Second Brain{% endblock %}
+{% block content %}
+<section class="tasks-page reveal">
+  <header class="page-hero">
+    <div class="eyebrow"><span>02</span> {{ t("Task radar") }}</div>
+    <h1>{{ t("Loose ends,") }}<br><em>{{ t("made visible.") }}</em></h1>
+    <p class="lede">{{ t("Only commitments found in your source material appear here. AI recommendations stay separate.") }}</p>
+  </header>
+  {% if completion_notice %}
+  <aside class="task-notice" role="status">
+    <span aria-hidden="true">✓</span>
+    <div>
+      <strong>{{ t("Task concluded") }}</strong>
+      <p>{% if graph_updated %}{{ t("The matching existing graph node was marked concluded too.") }}{% else %}{{ t("No graph node was created or changed because no unique existing match was found.") }}{% endif %}</p>
+    </div>
+  </aside>
+  {% endif %}
+  <div class="task-board">
+    {% set columns = [('overdue', 'Overdue', 'Past the stated deadline'), ('upcoming', 'Next 14 days', 'Scheduled and approaching'), ('unscheduled', 'Needs scheduling', 'No deadline was stated'), ('later', 'Later', 'Beyond the next two weeks')] %}
+    {% for key, title, description in columns %}
+    <section class="task-column task-column-{{ key }}">
+      <header><span>{{ "%02d"|format(board[key]|length) }}</span><h2>{{ t(title) }}</h2><p>{{ t(description) }}</p></header>
+      <div class="task-stack">
+        {% for action in board[key] %}
+        <article class="task-card">
+          <div class="priority priority-{{ action.priority }}">{{ action.priority }}</div>
+          <h3>{{ action.title }}</h3>
+          <p>{{ action.owner or t("Owner not stated") }}</p>
+          <time>{{ action.due_at|display_due or t("Unscheduled") }}</time>
+          <div class="task-card-actions">
+            <a href="/memories/{{ action.memory_id }}">{{ action.memory_title }} ↗</a>
+            <form method="post" action="/tasks/{{ action.id }}/complete">
+              <input name="csrf_token" type="hidden" value="{{ csrf_token }}">
+              <button type="submit" aria-label="{{ t('Mark concluded:') }} {{ action.title }}"><span aria-hidden="true">✓</span>{{ t("Mark concluded") }}</button>
+            </form>
+          </div>
+        </article>
+        {% else %}<p class="quiet">{{ t("Nothing here.") }}</p>{% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+
+  <section id="completed" class="completed-tasks" aria-labelledby="completed-title">
+    <header>
+      <div class="completed-count" aria-hidden="true">{{ "%02d"|format(board.completed|length) }}</div>
+      <div>
+        <span class="overline">{{ t("Archive") }}</span>
+        <h2 id="completed-title">{{ t("Concluded") }}</h2>
+        <p>{{ t("Completed commitments remain visible as part of your record.") }}</p>
+      </div>
+    </header>
+    <div class="completed-task-grid">
+      {% for action in board.completed %}
+      <article class="completed-task-card">
+        <span class="completed-mark" aria-hidden="true">✓</span>
+        <div>
+          <div class="priority priority-{{ action.priority }}">{{ action.priority }}</div>
+          <h3>{{ action.title }}</h3>
+          <p>{{ action.owner or t("Owner not stated") }}</p>
+          {% if action.completed_at %}<time datetime="{{ action.completed_at }}">{{ t("Concluded on") }} {{ action.completed_at|display_datetime }}</time>{% else %}<span class="quiet">{{ t("Completion time not recorded") }}</span>{% endif %}
+          <a href="/memories/{{ action.memory_id }}">{{ action.memory_title }} ↗</a>
+        </div>
+      </article>
+      {% else %}<p class="quiet completed-empty">{{ t("No concluded tasks yet.") }}</p>{% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}

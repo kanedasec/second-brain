@@ -23,6 +23,7 @@
 
   const COLORS = {
     memory: '#00e6ff',
+    action: '#fced1a',
     person: '#fced1a',
     organization: '#b26bff',
     project: '#39ff7a',
@@ -35,7 +36,9 @@
   };
   const INK = '#e9ecff';
   const ACCENT = '#fced1a';
+  const DONE = '#39ff7a';
   const colorFor = (node) => COLORS[node.category] || COLORS.other;
+  const isConcluded = (node) => node?.metadata?.task_status === 'done';
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const CAM = reduceMotion ? 0 : 600; // camera transition duration
@@ -62,6 +65,7 @@
       'Add to export': 'Adicionar à exportação',
       'In export set': 'No conjunto de exportação',
       'selected': 'selecionado(s)',
+      'Concluded': 'Concluída',
     },
   };
   const tr = (s) => (STR[LANG] && STR[LANG][s]) || s;
@@ -113,7 +117,7 @@
 
   const Graph = ForceGraph()(mount)
     .nodeId('id')
-    .nodeLabel((node) => `${escapeHtml(node.label)} · ${node.category}`)
+    .nodeLabel((node) => `${escapeHtml(node.label)} · ${node.category}${isConcluded(node) ? ` · ${tr('Concluded')}` : ''}`)
     .nodeRelSize(5)
     .nodeVisibility(nodeVisible)
     .linkVisibility(linkVisible)
@@ -128,6 +132,7 @@
       const faded = dimSel || dimSearch;
       const hit = searchTerm && matches(node);
       const emphasised = node.id === selectedId || node.id === hoverId;
+      const concluded = isConcluded(node);
       const color = colorFor(node);
       const radius = radiusFor(node) + (emphasised ? 2 : 0);
       ctx.globalAlpha = faded ? 0.16 : 1;
@@ -145,6 +150,20 @@
         ctx.lineWidth = (emphasised ? 2 : 2.5) / scale;
         ctx.strokeStyle = node.id === selectedId ? INK : (hit ? ACCENT : color);
         ctx.stroke();
+      }
+
+      if (concluded) {
+        ctx.globalAlpha = faded ? 0.3 : 1;
+        ctx.lineWidth = 2.3 / scale;
+        ctx.strokeStyle = DONE;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, radius + 3, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.fillStyle = '#06130b';
+        ctx.font = `bold ${Math.max(10 / scale, 3)}px Inter, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', node.x, node.y + .5 / scale);
       }
 
       if (scale > 1.4 || emphasised || connected.has(node.id) || hoverSet.has(node.id) || hit) {
@@ -359,9 +378,11 @@
     const provenance = detail.provenance === 'ai_inferred'
       ? `<span class="badge badge-ai">${tr('AI-inferred')}</span>`
       : `<span class="badge badge-source">${tr('Source-grounded')}</span>`;
+    const status = isConcluded(detail)
+      ? `<span class="badge badge-done">${tr('Concluded')}</span>` : '';
 
     panelBody.innerHTML = `
-      <p class="panel-eyebrow"><span class="cat-dot" style="background:${colorFor(detail)}"></span>${escapeHtml(detail.category)} ${provenance}</p>
+      <p class="panel-eyebrow"><span class="cat-dot" style="background:${colorFor(detail)}"></span>${escapeHtml(detail.category)} ${provenance} ${status}</p>
       <h2 class="panel-title">${escapeHtml(detail.label)}</h2>
       ${detail.description ? `<p class="panel-desc">${escapeHtml(detail.description)}</p>` : ''}
       ${detail.occurred_at ? `<p class="panel-when">${escapeHtml(detail.occurred_at)}</p>` : ''}

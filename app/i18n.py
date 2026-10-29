@@ -87,6 +87,20 @@ _PT_BR: dict[str, str] = {
     "Owner not stated": "Responsável não informado",
     "Unscheduled": "Sem agendamento",
     "Nothing here.": "Nada aqui.",
+    "Mark concluded": "Marcar como concluída",
+    "Mark concluded:": "Marcar como concluída:",
+    "Task concluded": "Tarefa concluída",
+    "The matching existing graph node was marked concluded too.":
+        "O nó correspondente já existente no grafo também foi marcado como concluído.",
+    "No graph node was created or changed because no unique existing match was found.":
+        "Nenhum nó do grafo foi criado ou alterado porque não foi encontrada uma correspondência existente única.",
+    "Archive": "Arquivo",
+    "Concluded": "Concluídas",
+    "Concluded on": "Concluída em",
+    "Completed commitments remain visible as part of your record.":
+        "Os compromissos concluídos permanecem visíveis como parte do seu registro.",
+    "Completion time not recorded": "Horário de conclusão não registrado",
+    "No concluded tasks yet.": "Ainda não há tarefas concluídas.",
     # Import
     "Import desk": "Mesa de importação",
     "Bring the day": "Traga o dia",

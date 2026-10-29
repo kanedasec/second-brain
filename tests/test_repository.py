@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import copy
 import json
+import sqlite3
 
 import pytest
 
@@ -36,6 +38,178 @@ def test_import_search_topic_and_task_views(settings, example_bundle):
     board = repository.task_board()
     assert len(board["unscheduled"]) == 1
     assert sum(len(items) for items in board.values()) == 2
+
+
+def test_complete_action_moves_task_to_archive_and_records_audit(
+    settings, example_bundle
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    repository.import_bundle(
+        KnowledgeBundle.model_validate(example_bundle),
+        "example.json",
+        json.dumps(example_bundle).encode(),
+    )
+    board = repository.task_board()
+    action = next(
+        item
+        for key, items in board.items()
+        if key != "completed"
+        for item in items
+        if item["title"] == "Review the observatory sensor inventory"
+    )
+
+    result = repository.complete_action(action["id"])
+
+    assert result is not None
+    assert result["changed"] is True
+    assert result["status"] == "done"
+    assert result["completed_at"]
+    assert result["graph_node_id"] is None
+    board = repository.task_board()
+    assert [item["id"] for item in board["completed"]] == [action["id"]]
+    assert repository.stats()["open_actions"] == 1
+    with repository.connect() as connection:
+        event = connection.execute(
+            "SELECT * FROM action_status_events WHERE action_id = ?", (action["id"],)
+        ).fetchone()
+    assert event["previous_status"] == "open"
+    assert event["new_status"] == "done"
+
+
+def test_complete_action_updates_only_matching_existing_graph_node(
+    settings, example_atlas
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    atlas_data = copy.deepcopy(example_atlas)
+    memory = atlas_data["memories"][0]
+    action = memory["actions"][0]
+    action_node_id = "action.review-observatory-sensor-inventory"
+    atlas_data["nodes"].append(
+        {
+            "id": action_node_id,
+            "category": "action",
+            "label": action["title"],
+            "description": "Explicit commitment from the planning note.",
+            "provenance": "source",
+            "metadata": {
+                "memory_id": memory["id"],
+                "task_status": "open",
+            },
+        }
+    )
+    atlas_data["edges"].append(
+        {
+            "source": f"mem:{memory['id']}",
+            "target": action_node_id,
+            "label": "commits to",
+            "directed": True,
+            "evidence": action["evidence"],
+            "provenance": "source",
+        }
+    )
+    repository.import_atlas_bundle(
+        AtlasBundle.model_validate(atlas_data),
+        "atlas.json",
+        json.dumps(atlas_data).encode(),
+    )
+    stored_count = repository.graph_stats()["graph_nodes"]
+    board = repository.task_board()
+    task = next(
+        item
+        for key, items in board.items()
+        if key != "completed"
+        for item in items
+        if item["title"] == action["title"]
+    )
+
+    result = repository.complete_action(task["id"])
+
+    assert result["graph_node_id"] == action_node_id
+    assert repository.graph_stats()["graph_nodes"] == stored_count
+    node = next(
+        item for item in repository.graph_payload()["nodes"] if item["id"] == action_node_id
+    )
+    assert node["metadata"]["memory_id"] == memory["id"]
+    assert node["metadata"]["task_status"] == "done"
+    assert node["metadata"]["task_completed_at"] == result["completed_at"]
+
+
+def test_complete_action_does_not_guess_between_graph_nodes(
+    settings, example_atlas
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    atlas_data = copy.deepcopy(example_atlas)
+    action = atlas_data["memories"][0]["actions"][0]
+    for suffix in ("a", "b"):
+        atlas_data["nodes"].append(
+            {
+                "id": f"action.review-inventory-{suffix}",
+                "category": "action",
+                "label": action["title"],
+                "provenance": "source",
+            }
+        )
+    repository.import_atlas_bundle(
+        AtlasBundle.model_validate(atlas_data),
+        "atlas.json",
+        json.dumps(atlas_data).encode(),
+    )
+    board = repository.task_board()
+    task = next(
+        item
+        for key, items in board.items()
+        if key != "completed"
+        for item in items
+        if item["title"] == action["title"]
+    )
+
+    result = repository.complete_action(task["id"])
+
+    assert result["status"] == "done"
+    assert result["graph_node_id"] is None
+    matching_nodes = [
+        node
+        for node in repository.graph_payload()["nodes"]
+        if node["label"] == action["title"]
+    ]
+    assert len(matching_nodes) == 2
+    assert all("metadata" not in node for node in matching_nodes)
+
+
+def test_initialize_migrates_legacy_actions_table(settings):
+    settings.database_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(settings.database_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                memory_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL,
+                due_at TEXT,
+                owner TEXT,
+                evidence TEXT NOT NULL,
+                priority TEXT NOT NULL
+            )
+            """
+        )
+
+    repository = Repository(settings.database_path)
+    repository.initialize()
+
+    with repository.connect() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(actions)").fetchall()
+        }
+        audit_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'action_status_events'"
+        ).fetchone()
+    assert "completed_at" in columns
+    assert audit_table is not None
 
 
 def test_exact_bundle_cannot_be_imported_twice(settings, example_bundle):

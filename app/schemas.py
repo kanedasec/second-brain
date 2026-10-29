@@ -143,6 +143,7 @@ NodeCategory = Literal[
     "person",
     "organization",
     "memory",
+    "action",
     "project",
     "concept",
     "event",

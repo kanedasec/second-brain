@@ -55,6 +55,7 @@ from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 BASE_DIR = Path(__file__).resolve().parent
 PUBLIC_PATHS = {"/ready", "/favicon.svg"}
 CSRF_COOKIE_NAME = "second_brain_csrf"
+TASK_CSRF_COOKIE_NAME = "second_brain_task_csrf"
 
 
 def safe_filename(value: str | None) -> str:
@@ -181,6 +182,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return response
 
+    def render_tasks(request: Request) -> Response:
+        csrf_token = secrets.token_urlsafe(32)
+        response = render(
+            request,
+            "tasks.jinja",
+            {
+                "board": repository.task_board(),
+                "csrf_token": csrf_token,
+                "completion_notice": request.query_params.get("updated") == "done",
+                "graph_updated": request.query_params.get("graph") == "1",
+            },
+        )
+        response.set_cookie(
+            TASK_CSRF_COOKIE_NAME,
+            csrf_token,
+            max_age=3_600,
+            httponly=True,
+            secure=app_settings.environment == "production",
+            samesite="strict",
+            path="/tasks",
+        )
+        return response
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(
         request: Request,
@@ -245,7 +269,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/tasks", response_class=HTMLResponse)
     async def tasks(request: Request):
-        return render(request, "tasks.html", {"board": repository.task_board()})
+        return render_tasks(request)
+
+    @app.post("/tasks/{action_id}/complete")
+    async def complete_task(
+        request: Request,
+        action_id: int,
+        csrf_token: str = Form(...),
+    ):
+        csrf_cookie = request.cookies.get(TASK_CSRF_COOKIE_NAME, "")
+        if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_token):
+            raise HTTPException(status_code=403, detail="invalid CSRF token")
+
+        result = repository.complete_action(action_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        if result["status"] == "cancelled":
+            raise HTTPException(status_code=409, detail="cancelled task cannot be concluded")
+        target = "/tasks?updated=done"
+        if result.get("graph_node_id"):
+            target += "&graph=1"
+        return RedirectResponse(f"{target}#completed", status_code=303)
 
     @app.get("/import", response_class=HTMLResponse)
     async def import_page(request: Request):
