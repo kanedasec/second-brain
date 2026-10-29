@@ -8,6 +8,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -24,7 +25,13 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from app.config import Settings
-from app.db import DuplicateBundleError, DuplicateMemoryError, Repository
+from app.db import (
+    AmbiguousReconciliationError,
+    DuplicateBundleError,
+    DuplicateMemoryError,
+    ReconciliationRequired,
+    Repository,
+)
 from app.i18n import (
     LANG_COOKIE,
     LANG_LABELS,
@@ -149,7 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def render_import(
         request: Request,
-        results: list[dict[str, str | int]] | None = None,
+        results: list[dict[str, Any]] | None = None,
         status_code: int = 200,
     ) -> Response:
         csrf_token = secrets.token_urlsafe(32)
@@ -249,12 +256,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         files: list[UploadFile] = File(...),
         csrf_token: str = Form(...),
+        reconciliation_fingerprint: str = Form(""),
+        confirm_reconciliation: str = Form(""),
     ):
         csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
         if not csrf_cookie or not secrets.compare_digest(csrf_cookie, csrf_token):
             raise HTTPException(status_code=403, detail="invalid CSRF token")
 
-        results: list[dict[str, str | int]] = []
+        results: list[dict[str, Any]] = []
         if len(files) > app_settings.max_upload_files:
             return render_import(
                 request,
@@ -276,15 +285,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 version = decoded.get("schema_version") if isinstance(decoded, dict) else None
                 if version == "3.0":
                     atlas = AtlasBundle.model_validate(decoded)
-                    counts = repository.import_atlas_bundle(atlas, filename, raw_data)
+                    confirmed_fingerprint = (
+                        reconciliation_fingerprint
+                        if confirm_reconciliation == "yes"
+                        else None
+                    )
+                    counts = repository.import_atlas_bundle(
+                        atlas,
+                        filename,
+                        raw_data,
+                        reconciliation_fingerprint=confirmed_fingerprint,
+                    )
                     results.append(
                         {
                             "status": "success",
                             "surface": "atlas",
                             "name": filename,
                             "message": (
-                                "Imported unified atlas ("
-                                f"{count_label(counts['memories'], 'memory')}, "
+                                (
+                                    "Imported reconciled unified atlas ("
+                                    if confirmed_fingerprint
+                                    else "Imported unified atlas ("
+                                )
+                                + f"{count_label(counts['memories'], 'memory')}, "
                                 f"{count_label(counts['nodes'], 'node')}, "
                                 f"{count_label(counts['edges'], 'edge')})"
                             ),
@@ -317,6 +340,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "message": f"Imported {count_label(count, 'memory')}",
                         }
                     )
+            except ReconciliationRequired as error:
+                results.append(
+                    {
+                        "status": "warning",
+                        "surface": "reconciliation",
+                        "name": filename,
+                        "message": (
+                            "No data was changed. Review the graph reconciliation plan "
+                            "before confirming this import."
+                        ),
+                        "reconciliation": error.plan,
+                        "confirmable": True,
+                    }
+                )
+            except AmbiguousReconciliationError as error:
+                results.append(
+                    {
+                        "status": "error",
+                        "surface": "reconciliation",
+                        "name": filename,
+                        "message": (
+                            "No data was changed. This file has ambiguous graph matches; "
+                            "update its node IDs before importing."
+                        ),
+                        "reconciliation": error.plan,
+                        "confirmable": False,
+                    }
+                )
             except json.JSONDecodeError as error:
                 results.append(
                     {"status": "error", "name": filename, "message": f"Invalid JSON near line {error.lineno}"}
@@ -332,7 +383,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finally:
                 await uploaded.close()
 
-        status_code = 200 if any(item["status"] == "success" for item in results) else 422
+        if any(item["status"] in {"success", "warning"} for item in results):
+            status_code = 200
+        else:
+            status_code = 422
         return render_import(
             request,
             results,

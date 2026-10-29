@@ -43,9 +43,12 @@ The synthetic [`examples/example-atlas.json`](examples/example-atlas.json) exerc
 2. Paste it into an AI, followed by the source text after the divider.
 3. Save the AI response as a `.json` file without Markdown fences.
 4. Upload one or more files at `/import`.
-5. Fix any schema errors reported by the importer; invalid bundles are never partially written.
+5. Review the reconciliation preflight when an upload would update or merge existing graph identities, then explicitly confirm it. Ambiguous matches remain blocked until their IDs are corrected.
+6. Fix any schema errors reported by the importer; invalid or unconfirmed bundles are never partially written.
 
 The primary versioned instructions are in [`app/content/atlas-ingestion-prompt.md`](app/content/atlas-ingestion-prompt.md). The application appends the JSON Schema generated directly from the Pydantic models, so the prompt and validation contract cannot drift independently. Schema 1.0 memory-only and schema 2.0 graph-only imports remain backward compatible, but the web interface clearly labels their limited scope.
+
+Schema-3 graph reconciliation is deterministic: exact IDs are compared before update, and a different ID is considered a likely duplicate only when its normalized label and compatible category match exactly one existing node. The preview shows inserts, updates, and identity merges before any write. Multiple candidates are never guessed.
 
 ## Storage and privacy
 
