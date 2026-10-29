@@ -35,7 +35,7 @@ The importer forbids unknown fields, requires timezone-aware timestamps, require
 - SQLite stores normalized memories, topics, facts, entities, actions, gaps, and recommendations alongside first-class graph nodes and edges.
 - A separate process using the same immutable image schedules consistent SQLite backups.
 
-Search covers titles, summaries, context, people, facts, evidence, topics, and entity explanations. Topic pages assemble facts and gaps from all connected memories. Task status is computed at read time from explicit deadlines.
+Search covers titles, summaries, context, people, facts, evidence, topics, and entity explanations. Topic pages assemble facts and gaps from all connected memories. Open-task urgency is computed at read time from explicit deadlines. Completing a task writes its `done` status, completion timestamp, and audit event in one transaction. A uniquely matched existing graph node is annotated in that transaction; no graph node is created by a status change.
 
 ## Runtime security
 

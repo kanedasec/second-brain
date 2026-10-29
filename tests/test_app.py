@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import re
 from dataclasses import replace
@@ -187,6 +188,97 @@ def test_unified_atlas_import_populates_all_views(client, example_atlas):
     graph = client.get("/graph.json").json()
     assert f"mem:{memory_id}" in {node["id"] for node in graph["nodes"]}
     assert client.get(f"/nodes/mem:{memory_id}").json()["record_id"] == memory_id
+
+
+def test_task_completion_route_archives_task_without_creating_graph_node(
+    client, example_atlas
+):
+    import_json(client, "atlas.json", json.dumps(example_atlas))
+    board = client.app.state.repository.task_board()
+    task = next(
+        item
+        for key, items in board.items()
+        if key != "completed"
+        for item in items
+        if item["title"] == "Review the observatory sensor inventory"
+    )
+    page = client.get("/tasks")
+    assert page.status_code == 200
+    csrf_token = client.cookies["second_brain_task_csrf"]
+
+    rejected = client.post(
+        f"/tasks/{task['id']}/complete",
+        data={"csrf_token": "wrong-token"},
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 403
+
+    completed = client.post(
+        f"/tasks/{task['id']}/complete",
+        data={"csrf_token": csrf_token},
+        follow_redirects=False,
+    )
+    assert completed.status_code == 303
+    assert completed.headers["location"] == "/tasks?updated=done#completed"
+    archive = client.get(completed.headers["location"])
+    assert "Task concluded" in archive.text
+    assert task["title"] in archive.text
+    assert f'/tasks/{task["id"]}/complete' not in archive.text
+    assert not any(
+        node.get("metadata", {}).get("task_status") == "done"
+        for node in client.get("/graph.json").json()["nodes"]
+    )
+
+
+def test_task_completion_updates_matching_existing_graph_node(
+    client, example_atlas
+):
+    atlas_data = copy.deepcopy(example_atlas)
+    memory = atlas_data["memories"][0]
+    action = memory["actions"][0]
+    action_node_id = "action.review-observatory-sensor-inventory"
+    atlas_data["nodes"].append(
+        {
+            "id": action_node_id,
+            "category": "action",
+            "label": action["title"],
+            "provenance": "source",
+            "metadata": {"memory_id": memory["id"], "task_status": "open"},
+        }
+    )
+    atlas_data["edges"].append(
+        {
+            "source": f"mem:{memory['id']}",
+            "target": action_node_id,
+            "label": "commits to",
+            "evidence": action["evidence"],
+            "provenance": "source",
+        }
+    )
+    imported = import_json(client, "atlas.json", json.dumps(atlas_data))
+    assert imported.status_code == 200
+    board = client.app.state.repository.task_board()
+    task = next(
+        item
+        for key, items in board.items()
+        if key != "completed"
+        for item in items
+        if item["title"] == action["title"]
+    )
+    client.get("/tasks")
+    csrf_token = client.cookies["second_brain_task_csrf"]
+
+    completed = client.post(
+        f"/tasks/{task['id']}/complete",
+        data={"csrf_token": csrf_token},
+        follow_redirects=False,
+    )
+
+    assert completed.status_code == 303
+    assert completed.headers["location"] == "/tasks?updated=done&graph=1#completed"
+    node = client.get(f"/nodes/{action_node_id}").json()
+    assert node["metadata"]["task_status"] == "done"
+    assert node["metadata"]["task_completed_at"]
 
 
 def test_unified_atlas_reconciliation_preflight_and_confirmation(

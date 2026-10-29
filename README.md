@@ -8,7 +8,7 @@ Second Brain deliberately keeps the AI outside the application. You copy the bui
 
 - browses memories by chronology, topic, date range, and full-context search;
 - separates source-grounded facts from general-knowledge explanations;
-- shows explicit commitments as overdue, upcoming, later, or unscheduled;
+- shows explicit commitments as overdue, upcoming, later, unscheduled, or concluded, with an audited completion control;
 - groups grounded facts and unanswered questions into topic dossiers;
 - marks all model-generated recommendations as AI advice;
 - imports one unified schema-3 file into memories, topics, tasks, search, and the graph atomically;
@@ -49,6 +49,8 @@ The synthetic [`examples/example-atlas.json`](examples/example-atlas.json) exerc
 The primary versioned instructions are in [`app/content/atlas-ingestion-prompt.md`](app/content/atlas-ingestion-prompt.md). The application appends the JSON Schema generated directly from the Pydantic models, so the prompt and validation contract cannot drift independently. Schema 1.0 memory-only and schema 2.0 graph-only imports remain backward compatible, but the web interface clearly labels their limited scope.
 
 Schema-3 graph reconciliation is deterministic: exact IDs are compared before update, and a different ID is considered a likely duplicate only when its normalized label and compatible category match exactly one existing node. The preview shows inserts, updates, and identity merges before any write. Multiple candidates are never guessed.
+
+Open tasks can be marked concluded from `/tasks`. The transition and timestamp are stored atomically and remain visible in the concluded archive. If exactly one existing task-like graph node matches the action title (preferring the same memory relationship or explicit metadata), that node receives concluded-state metadata in the same transaction. The application never creates a graph node during task completion and never guesses between multiple matches.
 
 ## Storage and privacy
 
