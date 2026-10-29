@@ -5,7 +5,7 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import KnowledgeBundle
+from app.schemas import AtlasBundle, KnowledgeBundle
 
 
 def test_example_bundle_is_valid(example_bundle):
@@ -94,3 +94,57 @@ def test_graph_rejects_unknown_field(example_graph):
     payload["nodes"][0]["unexpected"] = "x"
     with pytest.raises(ValidationError):
         GraphBundle.model_validate(payload)
+
+
+def test_example_atlas_is_valid(example_atlas):
+    bundle = AtlasBundle.model_validate(example_atlas)
+    assert bundle.schema_version == "3.0"
+    assert bundle.nodes[0].id.startswith("mem:")
+    assert bundle.memories[0].actions[0].evidence
+
+
+def test_atlas_requires_a_graph_node_for_every_memory(example_atlas):
+    payload = deepcopy(example_atlas)
+    payload["nodes"] = [node for node in payload["nodes"] if node["category"] != "memory"]
+    payload["edges"] = [
+        edge
+        for edge in payload["edges"]
+        if not edge["source"].startswith("mem:") and not edge["target"].startswith("mem:")
+    ]
+    with pytest.raises(ValidationError, match="every memory must have a graph node"):
+        AtlasBundle.model_validate(payload)
+
+
+def test_atlas_memory_graph_node_must_use_memory_category(example_atlas):
+    payload = deepcopy(example_atlas)
+    node = next(node for node in payload["nodes"] if node["id"].startswith("mem:"))
+    node["category"] = "event"
+    with pytest.raises(ValidationError, match="category 'memory'"):
+        AtlasBundle.model_validate(payload)
+
+
+def test_atlas_rejects_graph_only_memory_nodes(example_atlas):
+    payload = deepcopy(example_atlas)
+    extra = deepcopy(payload["nodes"][0])
+    extra["id"] = "mem:2026-10-28-graph-only-memory-01"
+    extra["label"] = "Graph-only memory"
+    extra["description"] = "This node has no matching editorial memory."
+    payload["nodes"].append(extra)
+    with pytest.raises(ValidationError, match="must correspond to an editorial memory"):
+        AtlasBundle.model_validate(payload)
+
+
+def test_atlas_memory_graph_node_must_match_editorial_memory(example_atlas):
+    payload = deepcopy(example_atlas)
+    node = next(node for node in payload["nodes"] if node["id"].startswith("mem:"))
+    node["label"] = "Conflicting title"
+    with pytest.raises(ValidationError, match="must match title"):
+        AtlasBundle.model_validate(payload)
+
+
+def test_atlas_source_graph_edges_require_evidence(example_atlas):
+    payload = deepcopy(example_atlas)
+    edge = next(edge for edge in payload["edges"] if edge.get("provenance") == "source")
+    edge.pop("evidence", None)
+    with pytest.raises(ValidationError, match="requires evidence"):
+        AtlasBundle.model_validate(payload)

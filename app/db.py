@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
-from app.schemas import GraphBundle, KnowledgeBundle
+from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 
 
 SCHEMA = """
@@ -235,70 +235,81 @@ class Repository:
         with self.connect() as connection:
             try:
                 connection.execute("BEGIN IMMEDIATE")
-                if connection.execute(
-                    "SELECT 1 FROM imports WHERE checksum = ?", (checksum,)
-                ).fetchone():
-                    raise DuplicateBundleError("this exact JSON file has already been imported")
-
-                existing = []
-                for memory in bundle.memories:
-                    row = connection.execute(
-                        "SELECT id FROM memories WHERE id = ?", (memory.id,)
-                    ).fetchone()
-                    if row:
-                        existing.append(row)
-                if existing:
-                    ids = ", ".join(row["id"] for row in existing)
-                    raise DuplicateMemoryError(f"memory id already exists: {ids}")
-
-                cursor = connection.execute(
-                    """
-                    INSERT INTO imports (
-                        checksum, source_filename, source_type, source_label,
-                        generator_provider, generator_model, generated_at, imported_at, memory_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        checksum,
-                        filename,
-                        bundle.source.type,
-                        bundle.source.label,
-                        bundle.generator.provider,
-                        bundle.generator.model,
-                        utc_iso(bundle.generated_at),
-                        now,
-                        len(bundle.memories),
-                    ),
-                )
-                import_id = cursor.lastrowid
-
-                for memory in bundle.memories:
-                    connection.execute(
-                        """
-                        INSERT INTO memories (
-                            id, import_id, title, summary, occurred_at, context, people_json,
-                            source_type, source_label, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            memory.id,
-                            import_id,
-                            memory.title,
-                            memory.summary,
-                            utc_iso(memory.occurred_at) if memory.occurred_at else None,
-                            memory.context,
-                            json.dumps(memory.people, ensure_ascii=False),
-                            bundle.source.type,
-                            bundle.source.label,
-                            now,
-                        ),
-                    )
-                    self._insert_children(connection, memory)
+                count = self._insert_memory_bundle(connection, bundle, filename, checksum, now)
                 connection.commit()
-                return len(bundle.memories)
+                return count
             except Exception:
                 connection.rollback()
                 raise
+
+    def _insert_memory_bundle(
+        self,
+        connection: sqlite3.Connection,
+        bundle: KnowledgeBundle | AtlasBundle,
+        filename: str,
+        checksum: str,
+        now: str,
+    ) -> int:
+        if connection.execute(
+            "SELECT 1 FROM imports WHERE checksum = ?", (checksum,)
+        ).fetchone():
+            raise DuplicateBundleError("this exact JSON file has already been imported")
+
+        existing = []
+        for memory in bundle.memories:
+            row = connection.execute(
+                "SELECT id FROM memories WHERE id = ?", (memory.id,)
+            ).fetchone()
+            if row:
+                existing.append(row)
+        if existing:
+            ids = ", ".join(row["id"] for row in existing)
+            raise DuplicateMemoryError(f"memory id already exists: {ids}")
+
+        cursor = connection.execute(
+            """
+            INSERT INTO imports (
+                checksum, source_filename, source_type, source_label,
+                generator_provider, generator_model, generated_at, imported_at, memory_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                checksum,
+                filename,
+                bundle.source.type,
+                bundle.source.label,
+                bundle.generator.provider,
+                bundle.generator.model,
+                utc_iso(bundle.generated_at),
+                now,
+                len(bundle.memories),
+            ),
+        )
+        import_id = cursor.lastrowid
+
+        for memory in bundle.memories:
+            connection.execute(
+                """
+                INSERT INTO memories (
+                    id, import_id, title, summary, occurred_at, context, people_json,
+                    source_type, source_label, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    memory.id,
+                    import_id,
+                    memory.title,
+                    memory.summary,
+                    utc_iso(memory.occurred_at) if memory.occurred_at else None,
+                    memory.context,
+                    json.dumps(memory.people, ensure_ascii=False),
+                    bundle.source.type,
+                    bundle.source.label,
+                    now,
+                ),
+            )
+            self._insert_children(connection, memory)
+        return len(bundle.memories)
 
     def _insert_children(self, connection: sqlite3.Connection, memory: Any) -> None:
         for topic in memory.topics:
@@ -632,109 +643,142 @@ class Repository:
         with self.connect() as connection:
             try:
                 connection.execute("BEGIN IMMEDIATE")
-                if connection.execute(
-                    "SELECT 1 FROM graph_imports WHERE checksum = ?", (checksum,)
-                ).fetchone():
-                    raise DuplicateBundleError("this exact JSON file has already been imported")
-
-                cursor = connection.execute(
-                    """
-                    INSERT INTO graph_imports (
-                        checksum, source_filename, generator_provider, generator_model,
-                        generated_at, imported_at, node_count, edge_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        checksum,
-                        filename,
-                        bundle.generator.provider,
-                        bundle.generator.model,
-                        utc_iso(bundle.generated_at),
-                        now,
-                        len(bundle.nodes),
-                        len(bundle.edges),
-                    ),
-                )
-                import_id = cursor.lastrowid
-
-                for node in bundle.nodes:
-                    source = node.source
-                    connection.execute(
-                        """
-                        INSERT INTO graph_nodes (
-                            id, category, label, description, occurred_at,
-                            source_type, source_label, source_excerpt, provenance,
-                            metadata_json, import_id, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET
-                            category = excluded.category,
-                            label = excluded.label,
-                            description = excluded.description,
-                            occurred_at = excluded.occurred_at,
-                            source_type = excluded.source_type,
-                            source_label = excluded.source_label,
-                            source_excerpt = excluded.source_excerpt,
-                            provenance = excluded.provenance,
-                            metadata_json = excluded.metadata_json,
-                            import_id = excluded.import_id,
-                            updated_at = excluded.updated_at
-                        """,
-                        (
-                            node.id,
-                            node.category,
-                            node.label,
-                            node.description,
-                            utc_iso(node.occurred_at) if node.occurred_at else None,
-                            source.type if source else None,
-                            source.label if source else None,
-                            source.excerpt if source else None,
-                            node.provenance,
-                            json.dumps(node.metadata, ensure_ascii=False) if node.metadata else None,
-                            import_id,
-                            now,
-                        ),
-                    )
-
-                for edge in bundle.edges:
-                    edge_key = edge.id or f"{edge.source}|{edge.label}|{edge.target}"
-                    connection.execute(
-                        """
-                        INSERT INTO graph_edges (
-                            edge_key, source_id, target_id, label, directed,
-                            description, evidence, provenance, metadata_json,
-                            import_id, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(edge_key) DO UPDATE SET
-                            source_id = excluded.source_id,
-                            target_id = excluded.target_id,
-                            label = excluded.label,
-                            directed = excluded.directed,
-                            description = excluded.description,
-                            evidence = excluded.evidence,
-                            provenance = excluded.provenance,
-                            metadata_json = excluded.metadata_json,
-                            import_id = excluded.import_id,
-                            updated_at = excluded.updated_at
-                        """,
-                        (
-                            edge_key,
-                            edge.source,
-                            edge.target,
-                            edge.label,
-                            1 if edge.directed else 0,
-                            edge.description,
-                            edge.evidence,
-                            edge.provenance,
-                            json.dumps(edge.metadata, ensure_ascii=False) if edge.metadata else None,
-                            import_id,
-                            now,
-                        ),
-                    )
+                counts = self._insert_graph_bundle(connection, bundle, filename, checksum, now)
                 connection.commit()
-                return {"nodes": len(bundle.nodes), "edges": len(bundle.edges)}
+                return counts
             except Exception:
                 connection.rollback()
                 raise
+
+    def import_atlas_bundle(
+        self, bundle: AtlasBundle, filename: str, raw_data: bytes
+    ) -> dict[str, int]:
+        """Persist editorial memories and graph structure in one transaction."""
+
+        checksum = hashlib.sha256(raw_data).hexdigest()
+        now = utc_iso(datetime.now(UTC))
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                memories = self._insert_memory_bundle(
+                    connection, bundle, filename, checksum, now
+                )
+                graph = self._insert_graph_bundle(
+                    connection, bundle, filename, checksum, now
+                )
+                connection.commit()
+                return {"memories": memories, **graph}
+            except Exception:
+                connection.rollback()
+                raise
+
+    def _insert_graph_bundle(
+        self,
+        connection: sqlite3.Connection,
+        bundle: GraphBundle | AtlasBundle,
+        filename: str,
+        checksum: str,
+        now: str,
+    ) -> dict[str, int]:
+        if connection.execute(
+            "SELECT 1 FROM graph_imports WHERE checksum = ?", (checksum,)
+        ).fetchone():
+            raise DuplicateBundleError("this exact JSON file has already been imported")
+
+        cursor = connection.execute(
+            """
+            INSERT INTO graph_imports (
+                checksum, source_filename, generator_provider, generator_model,
+                generated_at, imported_at, node_count, edge_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                checksum,
+                filename,
+                bundle.generator.provider,
+                bundle.generator.model,
+                utc_iso(bundle.generated_at),
+                now,
+                len(bundle.nodes),
+                len(bundle.edges),
+            ),
+        )
+        import_id = cursor.lastrowid
+
+        for node in bundle.nodes:
+            source = node.source
+            connection.execute(
+                """
+                INSERT INTO graph_nodes (
+                    id, category, label, description, occurred_at,
+                    source_type, source_label, source_excerpt, provenance,
+                    metadata_json, import_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    category = excluded.category,
+                    label = excluded.label,
+                    description = excluded.description,
+                    occurred_at = excluded.occurred_at,
+                    source_type = excluded.source_type,
+                    source_label = excluded.source_label,
+                    source_excerpt = excluded.source_excerpt,
+                    provenance = excluded.provenance,
+                    metadata_json = excluded.metadata_json,
+                    import_id = excluded.import_id,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    node.id,
+                    node.category,
+                    node.label,
+                    node.description,
+                    utc_iso(node.occurred_at) if node.occurred_at else None,
+                    source.type if source else None,
+                    source.label if source else None,
+                    source.excerpt if source else None,
+                    node.provenance,
+                    json.dumps(node.metadata, ensure_ascii=False) if node.metadata else None,
+                    import_id,
+                    now,
+                ),
+            )
+
+        for edge in bundle.edges:
+            edge_key = edge.id or f"{edge.source}|{edge.label}|{edge.target}"
+            connection.execute(
+                """
+                INSERT INTO graph_edges (
+                    edge_key, source_id, target_id, label, directed,
+                    description, evidence, provenance, metadata_json,
+                    import_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(edge_key) DO UPDATE SET
+                    source_id = excluded.source_id,
+                    target_id = excluded.target_id,
+                    label = excluded.label,
+                    directed = excluded.directed,
+                    description = excluded.description,
+                    evidence = excluded.evidence,
+                    provenance = excluded.provenance,
+                    metadata_json = excluded.metadata_json,
+                    import_id = excluded.import_id,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    edge_key,
+                    edge.source,
+                    edge.target,
+                    edge.label,
+                    1 if edge.directed else 0,
+                    edge.description,
+                    edge.evidence,
+                    edge.provenance,
+                    json.dumps(edge.metadata, ensure_ascii=False) if edge.metadata else None,
+                    import_id,
+                    now,
+                ),
+            )
+        return {"nodes": len(bundle.nodes), "edges": len(bundle.edges)}
 
     def graph_stats(self) -> dict[str, int]:
         with self.connect() as connection:
@@ -856,7 +900,11 @@ class Repository:
             projected = self._projected_v1_graph(connection)
         by_id = {node["id"]: node for node in projected["nodes"]}
         for node in stored["nodes"]:
-            by_id[node["id"]] = node
+            # A unified schema-3 import deliberately uses the projected
+            # ``mem:<memory-id>`` identity. Preserve projection-only fields
+            # such as ``record_id`` while allowing the authored graph node to
+            # enrich its label, description, provenance, and source metadata.
+            by_id[node["id"]] = by_id.get(node["id"], {}) | node
         edges = {edge["id"]: edge for edge in projected["edges"]}
         for edge in stored["edges"]:
             edges[edge["id"]] = edge

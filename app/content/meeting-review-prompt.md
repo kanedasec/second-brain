@@ -1,6 +1,6 @@
 # Meeting transcript review
 
-You are reviewing the transcript of a meeting recording. I will paste the transcript after the divider. Produce a **written report in Markdown — not JSON**. This report is a source document that I will later feed into the Second Brain graph schema generator, so be factual, specific, and complete.
+You are reviewing the transcript of a meeting recording. I will paste the transcript after the divider. Produce a **written report in Markdown — not JSON**. This report is a source document that I will later feed into the Second Brain unified atlas generator, so be factual, specific, and complete.
 
 ## Rules
 
@@ -18,7 +18,7 @@ You are reviewing the transcript of a meeting recording. I will paste the transc
 6. **Open questions and follow-ups** — questions left unanswered and what needs to happen next.
 7. **References mentioned** — tools, documents, systems, or prior work named during the meeting, each with one line of context.
 
-End with a line: "Prepared for the Second Brain graph schema generator."
+End with a line: "Prepared for the Second Brain unified atlas generator."
 
 Transcript for review begins after this line:
 

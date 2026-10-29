@@ -91,8 +91,8 @@ _PT_BR: dict[str, str] = {
     "Import desk": "Mesa de importação",
     "Bring the day": "Traga o dia",
     "into focus.": "para o foco.",
-    "Upload strict JSON produced with the Second Brain prompt. Files are validated before any memory is stored.":
-        "Envie o JSON estrito produzido com o prompt do Second Brain. Os arquivos são validados antes de qualquer memória ser armazenada.",
+    "Upload strict JSON produced with the unified Second Brain prompt. The complete file is validated before anything is stored.":
+        "Envie o JSON estrito produzido com o prompt unificado do Second Brain. O arquivo completo é validado antes que qualquer coisa seja armazenada.",
     "Drop JSON files here": "Solte os arquivos JSON aqui",
     "or choose from your device": "ou escolha do seu dispositivo",
     "Up to": "Até",
@@ -110,10 +110,21 @@ _PT_BR: dict[str, str] = {
     "Save the model’s JSON response and upload it here.":
         "Salve a resposta JSON do modelo e envie-a aqui.",
     "Open the AI prompt →": "Abrir o prompt de IA →",
+    "Accepted JSON formats": "Formatos JSON aceitos",
+    "Recommended: unified atlas": "Recomendado: atlas unificado",
+    "Populates memories, topics, tasks, search, and graph together.":
+        "Preenche memórias, tópicos, tarefas, pesquisa e grafo em conjunto.",
+    "Legacy memories": "Memórias legadas",
+    "Populates memory views and is projected into the graph.":
+        "Preenche as visualizações de memória e é projetado no grafo.",
+    "Legacy graph only": "Somente grafo legado",
+    "Populates only the graph; it cannot create grounded memories or tasks.":
+        "Preenche somente o grafo; não pode criar memórias fundamentadas nem tarefas.",
     "Result": "Resultado",
     "Import report": "Relatório de importação",
     "memories.": "memórias.",
     "View imported memories": "Ver memórias importadas",
+    "View graph": "Ver grafo",
     # Graph
     "Knowledge graph": "Grafo de conhecimento",
     "Trace how it all connects.": "Veja como tudo se conecta.",
@@ -130,6 +141,9 @@ _PT_BR: dict[str, str] = {
     "Export selection": "Exportar seleção",
     "Clear": "Limpar",
     "No graph yet.": "Nenhum grafo ainda.",
+    "Get the unified AI prompt": "Obtenha o prompt unificado de IA",
+    "to create memories and graph relationships together.":
+        "para criar memórias e relações do grafo em conjunto.",
     "a schema 2.0 graph, or": "um grafo de esquema 2.0, ou",
     "get the AI prompt": "obtenha o prompt de IA",
     ". Existing memories appear here automatically.":
@@ -140,15 +154,16 @@ _PT_BR: dict[str, str] = {
     "AI handoff": "Entrega para a IA",
     "Prompts that keep": "Prompts que mantêm",
     "memory honest.": "a memória honesta.",
-    "Prepare a source with one of the review prompts, then run the schema generator to produce the graph JSON you import.":
-        "Prepare uma fonte com um dos prompts de revisão e execute o gerador de esquema para produzir o JSON do grafo que você importa.",
+    "Prepare a source with one of the review prompts, then create one unified JSON file for every Second Brain view.":
+        "Prepare uma fonte com um dos prompts de revisão e crie um arquivo JSON unificado para todas as visualizações do Second Brain.",
     "Source preparation": "Preparação de fonte",
     "These produce a written report — not JSON. Feed that report into the schema generator.":
         "Estes produzem um relatório escrito — não JSON. Alimente esse relatório no gerador de esquema.",
     "Schema generator": "Gerador de esquema",
-    "Turns a prepared report (or raw source) into the graph JSON the app imports.":
-        "Transforma um relatório preparado (ou fonte bruta) no JSON do grafo que o app importa.",
+    "Creates memories, topics, tasks, search data, and graph relationships in one atomic import.":
+        "Cria memórias, tópicos, tarefas, dados de pesquisa e relações do grafo em uma única importação atômica.",
     "Outputs a written report": "Produz um relatório escrito",
+    "Outputs unified atlas JSON": "Produz JSON de atlas unificado",
     "Outputs graph JSON": "Produz JSON do grafo",
     "Outputs a presentation": "Produz uma apresentação",
     "Presentation": "Apresentação",
@@ -176,6 +191,9 @@ _PT_BR: dict[str, str] = {
     "Give it your day's notes and messages; it asks you focused questions, then writes a detailed daily report.":
         "Dê a ele as notas e mensagens do seu dia; ele faz perguntas objetivas e então escreve um relatório diário detalhado.",
     "Graph schema generator": "Gerador de esquema do grafo",
+    "Unified atlas generator": "Gerador de atlas unificado",
+    "Creates one grounded JSON file for memories, topics, tasks, search, and graph.":
+        "Cria um arquivo JSON fundamentado para memórias, tópicos, tarefas, pesquisa e grafo.",
     # Memory detail
     "← Memory atlas": "← Atlas de memória",
     "Context": "Contexto",

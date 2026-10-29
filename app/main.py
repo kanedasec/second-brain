@@ -33,6 +33,8 @@ from app.i18n import (
     translator,
 )
 from app.prompt import (
+    atlas_json_schema,
+    complete_atlas_prompt,
     complete_graph_prompt,
     complete_prompt,
     graph_json_schema,
@@ -40,7 +42,7 @@ from app.prompt import (
     prompt_catalog,
     prompt_text,
 )
-from app.schemas import GraphBundle, KnowledgeBundle
+from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -52,6 +54,10 @@ def safe_filename(value: str | None) -> str:
     if not value:
         return "upload.json"
     return Path(value).name[:240]
+
+
+def count_label(count: int, singular: str) -> str:
+    return f"{count} {singular if count == 1 else singular + 's'}"
 
 
 def parse_date(value: str) -> date | None:
@@ -268,22 +274,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise ValueError("file is empty")
                 decoded = json.loads(raw_data)
                 version = decoded.get("schema_version") if isinstance(decoded, dict) else None
-                if version == "2.0":
+                if version == "3.0":
+                    atlas = AtlasBundle.model_validate(decoded)
+                    counts = repository.import_atlas_bundle(atlas, filename, raw_data)
+                    results.append(
+                        {
+                            "status": "success",
+                            "surface": "atlas",
+                            "name": filename,
+                            "message": (
+                                "Imported unified atlas ("
+                                f"{count_label(counts['memories'], 'memory')}, "
+                                f"{count_label(counts['nodes'], 'node')}, "
+                                f"{count_label(counts['edges'], 'edge')})"
+                            ),
+                        }
+                    )
+                elif version == "2.0":
                     graph = GraphBundle.model_validate(decoded)
                     counts = repository.import_graph_bundle(graph, filename, raw_data)
                     results.append(
                         {
                             "status": "success",
+                            "surface": "graph",
                             "name": filename,
-                            "message": f"Imported graph ({counts['nodes']} nodes, {counts['edges']} edges)",
-                            "count": counts["nodes"],
+                            "message": (
+                                "Imported graph only ("
+                                f"{count_label(counts['nodes'], 'node')}, "
+                                f"{count_label(counts['edges'], 'edge')}). "
+                                "It does not create memories or tasks."
+                            ),
                         }
                     )
                 else:
                     bundle = KnowledgeBundle.model_validate(decoded)
                     count = repository.import_bundle(bundle, filename, raw_data)
                     results.append(
-                        {"status": "success", "name": filename, "message": "Imported", "count": count}
+                        {
+                            "status": "success",
+                            "surface": "memories",
+                            "name": filename,
+                            "message": f"Imported {count_label(count, 'memory')}",
+                        }
                     )
             except json.JSONDecodeError as error:
                 results.append(
@@ -335,6 +367,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(
             json_schema(),
             headers={"Content-Disposition": 'attachment; filename="second-brain-schema.json"'},
+        )
+
+    @app.get("/atlas-prompt.txt", response_class=PlainTextResponse)
+    async def atlas_prompt_download():
+        return PlainTextResponse(
+            complete_atlas_prompt(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-atlas-prompt.txt"'
+            },
+        )
+
+    @app.get("/atlas-schema.json", response_class=JSONResponse)
+    async def atlas_schema_download():
+        return JSONResponse(
+            atlas_json_schema(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-atlas-schema.json"'
+            },
         )
 
     @app.get("/graph", response_class=HTMLResponse)

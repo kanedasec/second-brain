@@ -1,6 +1,6 @@
 # Email day review
 
-You are reviewing one day of my email. I will paste the messages (or their text) after the divider. Produce a **written report in Markdown — not JSON**. This report is a source document that I will later feed into the Second Brain graph schema generator, so be factual, specific, and complete.
+You are reviewing one day of my email. I will paste the messages (or their text) after the divider. Produce a **written report in Markdown — not JSON**. This report is a source document that I will later feed into the Second Brain unified atlas generator, so be factual, specific, and complete.
 
 ## Rules
 
@@ -18,7 +18,7 @@ You are reviewing one day of my email. I will paste the messages (or their text)
 6. **People and context** — the senders and other people mentioned, with one line of context on each and how they relate to the threads.
 7. **Open questions** — anything the email leaves unresolved that I would need to clarify.
 
-End with a line: "Prepared for the Second Brain graph schema generator."
+End with a line: "Prepared for the Second Brain unified atlas generator."
 
 Email for review begins after this line:
 

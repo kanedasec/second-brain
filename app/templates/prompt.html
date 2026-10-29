@@ -4,7 +4,7 @@
 <article class="prompt-card" data-prompt-id="{{ p.id }}">
   <div class="prompt-card-head">
     <h3>{{ t(p.title) }}</h3>
-    {% set out_labels = {'report': t('Outputs a written report'), 'graph': t('Outputs graph JSON'), 'presentation': t('Outputs a presentation')} %}
+    {% set out_labels = {'report': t('Outputs a written report'), 'atlas': t('Outputs unified atlas JSON'), 'presentation': t('Outputs a presentation')} %}
     <span class="prompt-output prompt-output-{{ p.output }}">{{ out_labels[p.output] }}</span>
   </div>
   <p>{{ t(p.description) }}</p>
@@ -22,7 +22,7 @@
   <header class="page-hero compact-hero">
     <div class="eyebrow"><span>04</span> {{ t("AI handoff") }}</div>
     <h1>{{ t("Prompts that keep") }}<br><em>{{ t("memory honest.") }}</em></h1>
-    <p class="lede">{{ t("Prepare a source with one of the review prompts, then run the schema generator to produce the graph JSON you import.") }}</p>
+    <p class="lede">{{ t("Prepare a source with one of the review prompts, then create one unified JSON file for every Second Brain view.") }}</p>
   </header>
 
   <div class="prompt-library">
@@ -36,7 +36,7 @@
 
     <section class="prompt-group">
       <div class="section-heading"><span>02</span><h2>{{ t("Schema generator") }}</h2></div>
-      <p class="prompt-group-note">{{ t("Turns a prepared report (or raw source) into the graph JSON the app imports.") }}</p>
+      <p class="prompt-group-note">{{ t("Creates memories, topics, tasks, search data, and graph relationships in one atomic import.") }}</p>
       <div class="prompt-cards">
         {% for p in prompts if p.group == 'schema' %}{{ prompt_card(p) }}{% endfor %}
       </div>

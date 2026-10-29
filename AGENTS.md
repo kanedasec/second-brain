@@ -20,7 +20,7 @@ git diff --check
 bash -n deploy/deploy-second-brain
 ```
 
-Validate the Docker image and Compose model when those areas change. Use the synthetic `examples/example-memory.json`; never test with private user data.
+Validate the Docker image and Compose model when those areas change. Use the synthetic `examples/example-atlas.json` (or the legacy `example-memory.json`); never test with private user data.
 
 Run Gitleaks with the centrally reviewed configuration when available. Do not add repository-local suppressions.
 

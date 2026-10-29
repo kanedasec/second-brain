@@ -275,12 +275,19 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); }
 .import-notes li > span { color: var(--blue); font-family: var(--mono); font-size: .7rem; }
 .import-notes strong { font-family: var(--display); font-size: 1.25rem; font-weight: 500; }
 .import-notes p { color: var(--muted); margin: 4px 0 0; font-size: .82rem; }
+.format-guide { margin: 26px 0; border-block: 1px solid var(--line); }
+.format-guide p { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 2px 12px; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.format-guide p:last-child { border-bottom: 0; }
+.format-guide p > span { grid-row: 1 / 3; align-self: center; color: var(--yellow); font-family: var(--mono); font-size: .7rem; letter-spacing: .12em; }
+.format-guide p > strong { font-family: var(--display); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.format-guide p > small { color: var(--muted); line-height: 1.45; }
 .import-results { max-width: 920px; }
 .result { display: grid; grid-template-columns: 38px 1fr; gap: 16px; padding: 18px; border: 1px solid var(--line); margin-bottom: 9px; }
 .result > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: white; background: var(--green); }
 .result-error > span { background: var(--red); }
 .result h3, .result p { margin: 0; }
 .result p { color: var(--muted); font-size: .8rem; }
+.result-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 
 .prompt-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 22px 0; }
 .prompt-toolbar > div:first-child { font-family: var(--mono); font-size: .68rem; color: var(--muted); }
@@ -593,7 +600,7 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 .prompt-card h3 { font-family: var(--display); text-transform: uppercase; font-size: 1.12rem; letter-spacing: .02em; margin: 0; }
 .prompt-output { font-family: var(--mono); font-size: .56rem; text-transform: uppercase; letter-spacing: .1em; padding: 4px 9px; border: 1px solid var(--line-dark); white-space: nowrap; }
 .prompt-output-report { color: var(--magenta); border-color: rgb(255 46 151 / 35%); }
-.prompt-output-graph { color: var(--blue); border-color: rgb(0 230 255 / 35%); }
+.prompt-output-atlas, .prompt-output-graph { color: var(--blue); border-color: rgb(0 230 255 / 35%); }
 .prompt-output-presentation { color: var(--yellow); border-color: rgb(252 237 26 / 35%); }
 .prompt-card > p { color: var(--muted); margin: 12px 0 18px; max-width: 74ch; }
 .prompt-actions { display: flex; gap: 8px; flex-wrap: wrap; }

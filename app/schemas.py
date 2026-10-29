@@ -201,6 +201,100 @@ class GraphBundle(StrictModel):
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("node ids must be unique within a bundle")
         known = set(node_ids)
+        edge_ids = [edge.id for edge in self.edges if edge.id is not None]
+        if len(edge_ids) != len(set(edge_ids)):
+            raise ValueError("edge ids must be unique within a bundle")
+
+        for edge in self.edges:
+            if edge.source not in known:
+                raise ValueError(f"edge source references unknown node id: {edge.source}")
+            if edge.target not in known:
+                raise ValueError(f"edge target references unknown node id: {edge.target}")
+            if edge.source == edge.target:
+                raise ValueError(f"edge must connect two different nodes: {edge.source}")
+        return self
+
+
+class AtlasBundle(StrictModel):
+    """Unified import format for every Second Brain surface.
+
+    The editorial memories drive chronology, topics, tasks, search, grounded
+    facts, gaps, and recommendations. Nodes and edges preserve richer graph
+    relationships. Keeping both representations in one validated object lets
+    the repository persist them atomically without inferring one from the
+    other.
+    """
+
+    schema_version: Literal["3.0"]
+    generated_at: datetime
+    generator: Generator
+    source: Source
+    memories: list[Memory] = Field(min_length=1, max_length=500)
+    nodes: list[Node] = Field(min_length=1, max_length=5_000)
+    edges: list[Edge] = Field(default_factory=list, max_length=20_000)
+
+    _generated_at_has_timezone = field_validator("generated_at")(require_timezone)
+
+    @model_validator(mode="after")
+    def check_atlas_integrity(self) -> "AtlasBundle":
+        memory_ids = [memory.id for memory in self.memories]
+        if len(memory_ids) != len(set(memory_ids)):
+            raise ValueError("memory ids must be unique within a bundle")
+
+        node_ids = [node.id for node in self.nodes]
+        if len(node_ids) != len(set(node_ids)):
+            raise ValueError("node ids must be unique within a bundle")
+        known = set(node_ids)
+        expected_memory_nodes = {f"mem:{memory_id}" for memory_id in memory_ids}
+        missing_memory_nodes = sorted(expected_memory_nodes - known)
+        if missing_memory_nodes:
+            raise ValueError(
+                "every memory must have a graph node named mem:<memory-id>; missing: "
+                + ", ".join(missing_memory_nodes)
+            )
+        wrong_memory_nodes = sorted(
+            node.id
+            for node in self.nodes
+            if node.id in expected_memory_nodes and node.category != "memory"
+        )
+        if wrong_memory_nodes:
+            raise ValueError(
+                "memory graph nodes must use category 'memory': "
+                + ", ".join(wrong_memory_nodes)
+            )
+        unexpected_memory_nodes = sorted(
+            node.id
+            for node in self.nodes
+            if (node.category == "memory" or node.id.startswith("mem:"))
+            and node.id not in expected_memory_nodes
+        )
+        if unexpected_memory_nodes:
+            raise ValueError(
+                "memory graph nodes must correspond to an editorial memory: "
+                + ", ".join(unexpected_memory_nodes)
+            )
+        nodes_by_id = {node.id: node for node in self.nodes}
+        for memory in self.memories:
+            node = nodes_by_id[f"mem:{memory.id}"]
+            if (
+                node.label != memory.title
+                or node.description != memory.summary
+                or node.occurred_at != memory.occurred_at
+            ):
+                raise ValueError(
+                    f"memory graph node must match title, summary, and occurred_at: {node.id}"
+                )
+
+        unexplained_nodes = sorted(
+            node.id
+            for node in self.nodes
+            if node.provenance == "ai_inferred" and not node.description
+        )
+        if unexplained_nodes:
+            raise ValueError(
+                "AI-inferred graph nodes require a description: "
+                + ", ".join(unexplained_nodes)
+            )
 
         edge_ids = [edge.id for edge in self.edges if edge.id is not None]
         if len(edge_ids) != len(set(edge_ids)):
@@ -213,4 +307,12 @@ class GraphBundle(StrictModel):
                 raise ValueError(f"edge target references unknown node id: {edge.target}")
             if edge.source == edge.target:
                 raise ValueError(f"edge must connect two different nodes: {edge.source}")
+            if edge.provenance == "source" and not edge.evidence:
+                raise ValueError(
+                    f"source-grounded graph edge requires evidence: {edge.source} -> {edge.target}"
+                )
+            if edge.provenance == "ai_inferred" and not edge.description:
+                raise ValueError(
+                    f"AI-inferred graph edge requires a description: {edge.source} -> {edge.target}"
+                )
         return self

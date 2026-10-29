@@ -11,6 +11,7 @@ Second Brain deliberately keeps the AI outside the application. You copy the bui
 - shows explicit commitments as overdue, upcoming, later, or unscheduled;
 - groups grounded facts and unanswered questions into topic dossiers;
 - marks all model-generated recommendations as AI advice;
+- imports one unified schema-3 file into memories, topics, tasks, search, and the graph atomically;
 - provides the current prompt and JSON Schema from the web interface;
 - protects private routes with HTTP Basic authentication in production;
 - creates an integrity-checked SQLite backup every Friday at 23:55 and removes backups older than 93 days.
@@ -34,7 +35,7 @@ Run the tests:
 python -m pytest -q tests
 ```
 
-The synthetic file in [`examples/example-memory.json`](examples/example-memory.json) is ready to import.
+The synthetic [`examples/example-atlas.json`](examples/example-atlas.json) exercises the primary unified format. [`examples/example-memory.json`](examples/example-memory.json) remains available for schema-1 compatibility testing.
 
 ## Ingestion flow
 
@@ -44,7 +45,7 @@ The synthetic file in [`examples/example-memory.json`](examples/example-memory.j
 4. Upload one or more files at `/import`.
 5. Fix any schema errors reported by the importer; invalid bundles are never partially written.
 
-The versioned instructions are in [`app/content/ai-ingestion-prompt.md`](app/content/ai-ingestion-prompt.md). The application appends the JSON Schema generated directly from the Pydantic models, so the prompt and validation contract cannot drift independently.
+The primary versioned instructions are in [`app/content/atlas-ingestion-prompt.md`](app/content/atlas-ingestion-prompt.md). The application appends the JSON Schema generated directly from the Pydantic models, so the prompt and validation contract cannot drift independently. Schema 1.0 memory-only and schema 2.0 graph-only imports remain backward compatible, but the web interface clearly labels their limited scope.
 
 ## Storage and privacy
 
