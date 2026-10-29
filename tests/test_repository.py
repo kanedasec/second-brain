@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from app.db import DuplicateBundleError, Repository
+from app.db import (
+    AmbiguousReconciliationError,
+    DuplicateBundleError,
+    ReconciliationRequired,
+    Repository,
+)
 from app.schemas import AtlasBundle, GraphBundle, KnowledgeBundle
 
 
@@ -157,3 +162,148 @@ def test_unified_atlas_rolls_back_memories_when_graph_import_fails(
         )
 
     assert repository.stats() == {"memories": 0, "topics": 0, "open_actions": 0, "gaps": 0}
+
+
+def test_atlas_reconciliation_requires_confirmation_and_merges_graph_identities(
+    settings, example_atlas, overlapping_legacy_graph
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(overlapping_legacy_graph),
+        "legacy.json",
+        json.dumps(overlapping_legacy_graph).encode(),
+    )
+    raw = json.dumps(example_atlas).encode()
+    atlas = AtlasBundle.model_validate(example_atlas)
+
+    with pytest.raises(ReconciliationRequired) as pending:
+        repository.import_atlas_bundle(atlas, "atlas.json", raw)
+
+    plan = pending.value.plan
+    assert len(plan["node_merges"]) == 2
+    assert len(plan["edge_unchanged"]) == 1
+    assert repository.stats()["memories"] == 0  # preflight never partially writes
+    assert repository.graph_stats() == {"graph_nodes": 2, "graph_edges": 1}
+
+    repository.import_atlas_bundle(
+        atlas,
+        "atlas.json",
+        raw,
+        reconciliation_fingerprint=plan["fingerprint"],
+    )
+
+    assert repository.stats()["memories"] == 1
+    assert repository.graph_stats() == {"graph_nodes": 2, "graph_edges": 1}
+    payload = repository.graph_payload()
+    ids = {node["id"] for node in payload["nodes"]}
+    assert "memory.observatory-sensor-review" not in ids
+    assert "entity:technology:lorawan" not in ids
+    assert "mem:2026-10-28-observatory-planning-01" in ids
+    assert "tech.lorawan" in ids
+    mentions = [edge for edge in payload["edges"] if edge["label"] == "mentions"]
+    assert len(mentions) == 1
+    assert "memory.observatory-sensor-review" not in mentions[0]["id"]
+
+
+def test_atlas_reconciliation_blocks_ambiguous_semantic_matches(
+    settings, example_atlas
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    legacy = {
+        "schema_version": "2.0",
+        "generated_at": "2026-10-28T18:00:00-03:00",
+        "generator": {"provider": "legacy-example"},
+        "nodes": [
+            {"id": "tech.lorawan-a", "category": "technology", "label": "LoRaWAN"},
+            {"id": "tech.lorawan-b", "category": "technology", "label": "LoRaWAN"},
+        ],
+        "edges": [],
+    }
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(legacy), "legacy.json", json.dumps(legacy).encode()
+    )
+
+    with pytest.raises(AmbiguousReconciliationError) as blocked:
+        repository.import_atlas_bundle(
+            AtlasBundle.model_validate(example_atlas),
+            "atlas.json",
+            json.dumps(example_atlas).encode(),
+        )
+
+    assert len(blocked.value.plan["ambiguities"]) == 1
+    assert repository.stats()["memories"] == 0
+    assert repository.graph_stats() == {"graph_nodes": 2, "graph_edges": 0}
+
+
+def test_atlas_reconciliation_blocks_ambiguous_existing_edges(
+    settings, example_atlas
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    legacy = {
+        "schema_version": "2.0",
+        "generated_at": "2026-10-28T18:00:00-03:00",
+        "generator": {"provider": "legacy-example"},
+        "nodes": example_atlas["nodes"],
+        "edges": [
+            example_atlas["edges"][0] | {"id": "mentions-a"},
+            example_atlas["edges"][0] | {"id": "mentions-b"},
+        ],
+    }
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(legacy), "legacy.json", json.dumps(legacy).encode()
+    )
+
+    with pytest.raises(AmbiguousReconciliationError) as blocked:
+        repository.import_atlas_bundle(
+            AtlasBundle.model_validate(example_atlas),
+            "atlas.json",
+            json.dumps(example_atlas).encode(),
+        )
+
+    assert len(blocked.value.plan["ambiguities"]) == 1
+    assert blocked.value.plan["ambiguities"][0]["candidates"] == [
+        "mentions-a",
+        "mentions-b",
+    ]
+    assert repository.stats()["memories"] == 0
+    assert repository.graph_stats() == {"graph_nodes": 2, "graph_edges": 2}
+
+
+def test_atlas_reconciliation_requires_confirmation_for_exact_id_updates(
+    settings, example_atlas
+):
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    legacy = {
+        "schema_version": "2.0",
+        "generated_at": "2026-10-28T18:00:00-03:00",
+        "generator": {"provider": "legacy-example"},
+        "nodes": [
+            {
+                "id": "entity:technology:lorawan",
+                "category": "technology",
+                "label": "LoRaWAN",
+                "description": "Older description",
+            }
+        ],
+        "edges": [],
+    }
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(legacy), "legacy.json", json.dumps(legacy).encode()
+    )
+    raw = json.dumps(example_atlas).encode()
+    atlas = AtlasBundle.model_validate(example_atlas)
+
+    with pytest.raises(ReconciliationRequired) as pending:
+        repository.import_atlas_bundle(atlas, "atlas.json", raw)
+    assert [item["id"] for item in pending.value.plan["node_updates"]] == [
+        "entity:technology:lorawan"
+    ]
+    with pytest.raises(ReconciliationRequired):
+        repository.import_atlas_bundle(
+            atlas, "atlas.json", raw, reconciliation_fingerprint="stale-plan"
+        )
+    assert repository.stats()["memories"] == 0

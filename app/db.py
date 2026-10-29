@@ -200,6 +200,18 @@ class DuplicateMemoryError(ValueError):
     pass
 
 
+class ReconciliationRequired(ValueError):
+    def __init__(self, plan: dict[str, Any]):
+        super().__init__("graph reconciliation requires confirmation")
+        self.plan = plan
+
+
+class AmbiguousReconciliationError(ValueError):
+    def __init__(self, plan: dict[str, Any]):
+        super().__init__("graph reconciliation is ambiguous")
+        self.plan = plan
+
+
 class Repository:
     def __init__(self, database_path: Path):
         self.database_path = database_path
@@ -651,7 +663,11 @@ class Repository:
                 raise
 
     def import_atlas_bundle(
-        self, bundle: AtlasBundle, filename: str, raw_data: bytes
+        self,
+        bundle: AtlasBundle,
+        filename: str,
+        raw_data: bytes,
+        reconciliation_fingerprint: str | None = None,
     ) -> dict[str, int]:
         """Persist editorial memories and graph structure in one transaction."""
 
@@ -660,17 +676,306 @@ class Repository:
         with self.connect() as connection:
             try:
                 connection.execute("BEGIN IMMEDIATE")
+                plan = self._atlas_reconciliation(connection, bundle, checksum)
+                if plan["ambiguities"]:
+                    raise AmbiguousReconciliationError(plan)
+                if (
+                    plan["requires_confirmation"]
+                    and reconciliation_fingerprint != plan["fingerprint"]
+                ):
+                    raise ReconciliationRequired(plan)
                 memories = self._insert_memory_bundle(
                     connection, bundle, filename, checksum, now
                 )
                 graph = self._insert_graph_bundle(
-                    connection, bundle, filename, checksum, now
+                    connection, bundle, filename, checksum, now, plan
                 )
                 connection.commit()
                 return {"memories": memories, **graph}
             except Exception:
                 connection.rollback()
                 raise
+
+    def preflight_atlas_bundle(
+        self, bundle: AtlasBundle, raw_data: bytes
+    ) -> dict[str, Any]:
+        checksum = hashlib.sha256(raw_data).hexdigest()
+        with self.connect() as connection:
+            return self._atlas_reconciliation(connection, bundle, checksum)
+
+    def _atlas_reconciliation(
+        self,
+        connection: sqlite3.Connection,
+        bundle: AtlasBundle,
+        checksum: str,
+    ) -> dict[str, Any]:
+        stored_rows = connection.execute(
+            """
+            SELECT id, category, label, description, occurred_at,
+                   source_type, source_label, source_excerpt, provenance,
+                   metadata_json
+            FROM graph_nodes ORDER BY id
+            """
+        ).fetchall()
+        stored = {row["id"]: dict(row) | {"origin": "stored"} for row in stored_rows}
+        projected = {
+            node["id"]: node | {"origin": "projected"}
+            for node in self._projected_v1_graph(connection)["nodes"]
+            if node["id"] not in stored
+        }
+        existing = stored | projected
+
+        by_label: dict[str, list[dict[str, Any]]] = {}
+        for item in existing.values():
+            by_label.setdefault(slugify(item["label"]), []).append(item)
+
+        node_id_map: dict[str, str] = {}
+        existing_replacements: dict[str, str] = {}
+        node_inserts: list[dict[str, str]] = []
+        node_updates: list[dict[str, str]] = []
+        node_unchanged: list[str] = []
+        node_merges: list[dict[str, str]] = []
+        ambiguities: list[dict[str, Any]] = []
+
+        for node in bundle.nodes:
+            current = existing.get(node.id)
+            if current is not None:
+                if current["origin"] == "stored" and self._node_matches(current, node):
+                    node_unchanged.append(node.id)
+                elif current["origin"] == "projected":
+                    node_merges.append(
+                        {
+                            "label": node.label,
+                            "category": node.category,
+                            "incoming_id": node.id,
+                            "existing_id": node.id,
+                            "final_id": node.id,
+                            "action": "reuse projected identity",
+                        }
+                    )
+                else:
+                    node_updates.append(
+                        {"id": node.id, "label": node.label, "category": node.category}
+                    )
+                continue
+
+            compatible_categories = (
+                {"memory", "event"} if node.category == "memory" else {node.category}
+            )
+            candidates = [
+                item
+                for item in by_label.get(slugify(node.label), [])
+                if item["category"] in compatible_categories
+                and not (node.category == "memory" and item["origin"] == "projected")
+            ]
+            if not candidates:
+                node_inserts.append(
+                    {"id": node.id, "label": node.label, "category": node.category}
+                )
+                continue
+            if len(candidates) > 1:
+                ambiguities.append(
+                    {
+                        "incoming_id": node.id,
+                        "label": node.label,
+                        "reason": "multiple existing nodes share this label and category",
+                        "candidates": [item["id"] for item in candidates],
+                    }
+                )
+                continue
+
+            match = candidates[0]
+            if node.category == "memory":
+                claimed_by = existing_replacements.get(match["id"])
+                if claimed_by is not None and claimed_by != node.id:
+                    ambiguities.append(
+                        {
+                            "incoming_id": f"{claimed_by}, {node.id}",
+                            "label": node.label,
+                            "reason": (
+                                "multiple incoming memories claim the same existing node"
+                            ),
+                            "candidates": [match["id"]],
+                        }
+                    )
+                    continue
+                existing_replacements[match["id"]] = node.id
+                action = "fold existing node into memory identity"
+                final_id = node.id
+            else:
+                node_id_map[node.id] = match["id"]
+                action = "reuse existing identity"
+                final_id = match["id"]
+            node_merges.append(
+                {
+                    "label": node.label,
+                    "category": node.category,
+                    "incoming_id": node.id,
+                    "existing_id": match["id"],
+                    "final_id": final_id,
+                    "action": action,
+                }
+            )
+
+        final_ids: dict[str, list[str]] = {}
+        for node in bundle.nodes:
+            final_id = node_id_map.get(node.id, node.id)
+            final_ids.setdefault(final_id, []).append(node.id)
+        for final_id, incoming_ids in final_ids.items():
+            if len(incoming_ids) > 1:
+                ambiguities.append(
+                    {
+                        "incoming_id": ", ".join(incoming_ids),
+                        "label": final_id,
+                        "reason": "multiple incoming nodes would collapse into one identity",
+                        "candidates": [final_id],
+                    }
+                )
+
+        edge_rows = connection.execute(
+            """
+            SELECT edge_key, source_id, target_id, label, directed,
+                   description, evidence, provenance, metadata_json
+            FROM graph_edges ORDER BY id
+            """
+        ).fetchall()
+        existing_edges: dict[str, dict[str, Any]] = {}
+        semantic_edges: dict[tuple[str, str, str, int], list[dict[str, Any]]] = {}
+        for raw_row in edge_rows:
+            row = dict(raw_row)
+            source = existing_replacements.get(row["source_id"], row["source_id"])
+            target = existing_replacements.get(row["target_id"], row["target_id"])
+            derived_key = f"{row['source_id']}|{row['label']}|{row['target_id']}"
+            effective_key = (
+                f"{source}|{row['label']}|{target}"
+                if row["edge_key"] == derived_key
+                else row["edge_key"]
+            )
+            row |= {
+                "edge_key": effective_key,
+                "source_id": source,
+                "target_id": target,
+            }
+            existing_edges[effective_key] = row
+            semantic_edges.setdefault(
+                (source, target, row["label"].casefold(), int(row["directed"])), []
+            ).append(row)
+
+        edge_keys: list[str] = []
+        edge_inserts: list[dict[str, str]] = []
+        edge_updates: list[dict[str, str]] = []
+        edge_merges: list[dict[str, str]] = []
+        edge_unchanged: list[str] = []
+        for edge in bundle.edges:
+            source = node_id_map.get(edge.source, edge.source)
+            target = node_id_map.get(edge.target, edge.target)
+            desired_key = edge.id or f"{source}|{edge.label}|{target}"
+            matches = semantic_edges.get(
+                (source, target, edge.label.casefold(), 1 if edge.directed else 0), []
+            )
+            if len(matches) > 1:
+                ambiguities.append(
+                    {
+                        "incoming_id": str(edge.id or "derived"),
+                        "label": edge.label,
+                        "reason": (
+                            "multiple existing edges share these endpoints and label"
+                        ),
+                        "candidates": [item["edge_key"] for item in matches],
+                    }
+                )
+                edge_keys.append(desired_key)
+                continue
+
+            current = existing_edges.get(desired_key)
+            if current is not None:
+                edge_keys.append(desired_key)
+                if self._edge_matches(current, edge, source, target):
+                    edge_unchanged.append(desired_key)
+                else:
+                    edge_updates.append(
+                        {
+                            "id": desired_key,
+                            "source": source,
+                            "target": target,
+                            "label": edge.label,
+                        }
+                    )
+                continue
+
+            if matches:
+                existing_key = matches[0]["edge_key"]
+                edge_keys.append(existing_key)
+                edge_merges.append(
+                    {
+                        "incoming_id": str(edge.id or "derived"),
+                        "existing_id": existing_key,
+                        "label": edge.label,
+                    }
+                )
+            else:
+                edge_keys.append(desired_key)
+                edge_inserts.append(
+                    {"id": desired_key, "source": source, "target": target, "label": edge.label}
+                )
+
+        fingerprint_payload = {
+            "checksum": checksum,
+            "node_id_map": node_id_map,
+            "existing_replacements": existing_replacements,
+            "edge_keys": edge_keys,
+            "node_updates": node_updates,
+            "node_merges": node_merges,
+            "edge_updates": edge_updates,
+            "edge_merges": edge_merges,
+            "ambiguities": ambiguities,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
+        return fingerprint_payload | {
+            "fingerprint": fingerprint,
+            "node_inserts": node_inserts,
+            "node_unchanged": node_unchanged,
+            "edge_inserts": edge_inserts,
+            "edge_unchanged": edge_unchanged,
+            "requires_confirmation": bool(
+                node_updates or node_merges or edge_updates or edge_merges
+            ),
+        }
+
+    @staticmethod
+    def _node_matches(row: dict[str, Any], node: Any) -> bool:
+        source = node.source
+        metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else None
+        return (
+            row["category"] == node.category
+            and row["label"] == node.label
+            and row["description"] == node.description
+            and row["occurred_at"]
+            == (utc_iso(node.occurred_at) if node.occurred_at else None)
+            and row["source_type"] == (source.type if source else None)
+            and row["source_label"] == (source.label if source else None)
+            and row["source_excerpt"] == (source.excerpt if source else None)
+            and row["provenance"] == node.provenance
+            and metadata == node.metadata
+        )
+
+    @staticmethod
+    def _edge_matches(
+        row: dict[str, Any], edge: Any, source: str, target: str
+    ) -> bool:
+        metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else None
+        return (
+            row["source_id"] == source
+            and row["target_id"] == target
+            and row["label"] == edge.label
+            and bool(row["directed"]) == edge.directed
+            and row["description"] == edge.description
+            and row["evidence"] == edge.evidence
+            and row["provenance"] == edge.provenance
+            and metadata == edge.metadata
+        )
 
     def _insert_graph_bundle(
         self,
@@ -679,6 +984,7 @@ class Repository:
         filename: str,
         checksum: str,
         now: str,
+        reconciliation: dict[str, Any] | None = None,
     ) -> dict[str, int]:
         if connection.execute(
             "SELECT 1 FROM graph_imports WHERE checksum = ?", (checksum,)
@@ -705,8 +1011,10 @@ class Repository:
         )
         import_id = cursor.lastrowid
 
+        node_id_map = reconciliation["node_id_map"] if reconciliation else {}
         for node in bundle.nodes:
             source = node.source
+            node_id = node_id_map.get(node.id, node.id)
             connection.execute(
                 """
                 INSERT INTO graph_nodes (
@@ -728,7 +1036,7 @@ class Repository:
                     updated_at = excluded.updated_at
                 """,
                 (
-                    node.id,
+                    node_id,
                     node.category,
                     node.label,
                     node.description,
@@ -743,8 +1051,18 @@ class Repository:
                 ),
             )
 
-        for edge in bundle.edges:
-            edge_key = edge.id or f"{edge.source}|{edge.label}|{edge.target}"
+        if reconciliation:
+            for old_id, new_id in reconciliation["existing_replacements"].items():
+                self._merge_existing_graph_node(connection, old_id, new_id)
+
+        for index, edge in enumerate(bundle.edges):
+            source_id = node_id_map.get(edge.source, edge.source)
+            target_id = node_id_map.get(edge.target, edge.target)
+            edge_key = (
+                reconciliation["edge_keys"][index]
+                if reconciliation
+                else edge.id or f"{source_id}|{edge.label}|{target_id}"
+            )
             connection.execute(
                 """
                 INSERT INTO graph_edges (
@@ -766,8 +1084,8 @@ class Repository:
                 """,
                 (
                     edge_key,
-                    edge.source,
-                    edge.target,
+                    source_id,
+                    target_id,
                     edge.label,
                     1 if edge.directed else 0,
                     edge.description,
@@ -779,6 +1097,61 @@ class Repository:
                 ),
             )
         return {"nodes": len(bundle.nodes), "edges": len(bundle.edges)}
+
+    @staticmethod
+    def _merge_existing_graph_node(
+        connection: sqlite3.Connection, old_id: str, new_id: str
+    ) -> None:
+        if old_id == new_id:
+            return
+        rows = connection.execute(
+            "SELECT * FROM graph_edges WHERE source_id = ? OR target_id = ? ORDER BY id",
+            (old_id, old_id),
+        ).fetchall()
+        for row in rows:
+            source_id = new_id if row["source_id"] == old_id else row["source_id"]
+            target_id = new_id if row["target_id"] == old_id else row["target_id"]
+            if source_id == target_id:
+                connection.execute("DELETE FROM graph_edges WHERE id = ?", (row["id"],))
+                continue
+            derived_key = f"{row['source_id']}|{row['label']}|{row['target_id']}"
+            edge_key = (
+                f"{source_id}|{row['label']}|{target_id}"
+                if row["edge_key"] == derived_key
+                else row["edge_key"]
+            )
+            duplicate = connection.execute(
+                """
+                SELECT id FROM graph_edges
+                WHERE id != ? AND (
+                    edge_key = ? OR (
+                        source_id = ? AND target_id = ?
+                        AND label = ? AND directed = ?
+                    )
+                )
+                LIMIT 1
+                """,
+                (
+                    row["id"],
+                    edge_key,
+                    source_id,
+                    target_id,
+                    row["label"],
+                    row["directed"],
+                ),
+            ).fetchone()
+            if duplicate:
+                connection.execute("DELETE FROM graph_edges WHERE id = ?", (row["id"],))
+            else:
+                connection.execute(
+                    """
+                    UPDATE graph_edges
+                    SET edge_key = ?, source_id = ?, target_id = ?
+                    WHERE id = ?
+                    """,
+                    (edge_key, source_id, target_id, row["id"]),
+                )
+        connection.execute("DELETE FROM graph_nodes WHERE id = ?", (old_id,))
 
     def graph_stats(self) -> dict[str, int]:
         with self.connect() as connection:
@@ -813,8 +1186,9 @@ class Repository:
     def _projected_v1_graph(self, connection: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
         """Project stored v1 memory records into graph nodes and edges so the
         existing record data appears in the graph view. Projected ids are
-        namespaced (``mem:``/``topic:``/``entity:``/``person:``) to avoid
-        colliding with author-provided graph node ids."""
+        namespaced (``mem:``/``topic:``/``entity:``/``person:``). When one
+        authored graph node has the same normalized label and category, the
+        projection reuses that identity instead of drawing a duplicate."""
         entity_category = {
             "person": "person",
             "organization": "organization",
@@ -827,6 +1201,17 @@ class Repository:
         }
         nodes: dict[str, dict[str, Any]] = {}
         edges: list[dict[str, Any]] = []
+        authored_by_label: dict[tuple[str, str], list[str]] = {}
+        for row in connection.execute(
+            "SELECT id, category, label FROM graph_nodes ORDER BY id"
+        ).fetchall():
+            authored_by_label.setdefault(
+                (row["category"], slugify(row["label"])), []
+            ).append(row["id"])
+
+        def projected_id(category: str, label: str, fallback: str) -> str:
+            matches = authored_by_label.get((category, slugify(label)), [])
+            return matches[0] if len(matches) == 1 else fallback
 
         memories = connection.execute(
             "SELECT id, title, summary, occurred_at, people_json FROM memories"
@@ -844,7 +1229,9 @@ class Repository:
                 "origin": "memory",
             }
             for name in json.loads(memory["people_json"] or "[]"):
-                person_id = f"person:{slugify(name)}"
+                person_id = projected_id(
+                    "person", name, f"person:{slugify(name)}"
+                )
                 nodes.setdefault(
                     person_id,
                     {"id": person_id, "category": "person", "label": name,
@@ -862,7 +1249,9 @@ class Repository:
             FROM memory_topics mt JOIN topics t ON t.id = mt.topic_id
             """
         ).fetchall():
-            topic_id = f"topic:{row['slug']}"
+            topic_id = projected_id(
+                "topic", row["name"], f"topic:{row['slug']}"
+            )
             nodes.setdefault(
                 topic_id,
                 {"id": topic_id, "category": "topic", "label": row["name"],
@@ -878,7 +1267,11 @@ class Repository:
             "SELECT memory_id, name, type FROM entities"
         ).fetchall():
             category = entity_category.get(row["type"], "other")
-            entity_id = f"entity:{category}:{slugify(row['name'])}"
+            entity_id = projected_id(
+                category,
+                row["name"],
+                f"entity:{category}:{slugify(row['name'])}",
+            )
             nodes.setdefault(
                 entity_id,
                 {"id": entity_id, "category": category, "label": row["name"],

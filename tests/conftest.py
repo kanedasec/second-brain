@@ -29,6 +29,42 @@ def example_atlas() -> dict:
 
 
 @pytest.fixture
+def overlapping_legacy_graph(example_atlas: dict) -> dict:
+    memory = example_atlas["memories"][0]
+    return {
+        "schema_version": "2.0",
+        "generated_at": "2026-10-28T18:00:00-03:00",
+        "generator": {"provider": "legacy-example"},
+        "nodes": [
+            {
+                "id": "memory.observatory-sensor-review",
+                "category": "memory",
+                "label": memory["title"],
+                "description": "Legacy graph-only representation of the briefing.",
+                "provenance": "source",
+            },
+            {
+                "id": "tech.lorawan",
+                "category": "technology",
+                "label": "LoRaWAN",
+                "description": "Legacy graph identity for LoRaWAN.",
+                "provenance": "source",
+            },
+        ],
+        "edges": [
+            {
+                "source": "memory.observatory-sensor-review",
+                "target": "tech.lorawan",
+                "label": "mentions",
+                "directed": True,
+                "evidence": "The note refers to the observatory's LoRaWAN gateway.",
+                "provenance": "source",
+            }
+        ],
+    }
+
+
+@pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
         data_dir=tmp_path,

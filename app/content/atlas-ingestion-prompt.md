@@ -33,6 +33,7 @@ Transform the source material I provide after this instruction into **only one v
 - Do not create a `memory` category or `mem:` graph node unless it has a matching editorial memory in the same bundle.
 - Use the remaining `nodes` and `edges` for first-class entities and meaningful relationships that make the source easier to navigate: people, organizations, projects, concepts, events, technologies, places, and topics.
 - Every node needs a stable, unique, lowercase `id`. Use canonical IDs where possible: `person:ada-chen`, `topic:environmental-monitoring`, or `entity:technology:lorawan`. Reuse the same ID for the same real entity across files and do not create another ID for an entity already represented in the bundle.
+- If I include an existing Second Brain graph export with the source, preserve its node IDs for the same entities. Do not guess a match when names or context are ambiguous.
 - Create a node only for something present in the source. Give it `provenance: "source"`. If its description contains only general background rather than source-specific information, use `provenance: "ai_inferred"` and keep the description clearly general.
 - Every edge must reference nodes defined in this same bundle. Create an edge only when the source supports the relationship. Include a short `evidence` excerpt and use `provenance: "source"`.
 - A relationship added from established general knowledge or reasonable inference must use `provenance: "ai_inferred"` and explain the inference in `description`. Never present it as source-stated.

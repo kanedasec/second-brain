@@ -26,7 +26,7 @@ The schema separates five kinds of information:
 | Knowledge gaps | Missing or unresolved information | “What you still need” |
 | Recommendations | Must carry `ai_generated: true` | Visibly labeled AI advice |
 
-The importer forbids unknown fields, requires timezone-aware timestamps, requires evidence for facts/actions/entities, and writes the editorial and graph representations atomically. Exact file checksums and stable memory IDs prevent accidental duplicates. Schema 1.0 memory-only and schema 2.0 graph-only bundles remain supported; the importer never guesses editorial facts or tasks from graph-only data.
+The importer forbids unknown fields, requires timezone-aware timestamps, requires evidence for facts/actions/entities, and writes the editorial and graph representations atomically. Exact file checksums and stable memory IDs prevent accidental duplicates. Before a schema-3 write, graph reconciliation classifies inserts, exact-ID updates, and same-label/category identity merges. Updates and merges require an explicit matching-plan confirmation; multiple semantic candidates block the import rather than guessing. Schema 1.0 memory-only and schema 2.0 graph-only bundles remain supported; the importer never guesses editorial facts or tasks from graph-only data.
 
 ## Application components
 

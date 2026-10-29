@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
@@ -9,14 +10,20 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
-def import_json(client, filename: str, content: str, headers: dict[str, str] | None = None):
+def import_json(
+    client,
+    filename: str,
+    content: str,
+    headers: dict[str, str] | None = None,
+    form_data: dict[str, str] | None = None,
+):
     form = client.get("/import")
     assert form.status_code == 200
     csrf_token = client.cookies["second_brain_csrf"]
     return client.post(
         "/import",
         headers=headers or {},
-        data={"csrf_token": csrf_token},
+        data={"csrf_token": csrf_token} | (form_data or {}),
         files={"files": (filename, content, "application/json")},
     )
 
@@ -180,6 +187,44 @@ def test_unified_atlas_import_populates_all_views(client, example_atlas):
     graph = client.get("/graph.json").json()
     assert f"mem:{memory_id}" in {node["id"] for node in graph["nodes"]}
     assert client.get(f"/nodes/mem:{memory_id}").json()["record_id"] == memory_id
+
+
+def test_unified_atlas_reconciliation_preflight_and_confirmation(
+    client, example_atlas, overlapping_legacy_graph
+):
+    import_graph(client, overlapping_legacy_graph)
+
+    preview = import_json(client, "atlas.json", json.dumps(example_atlas))
+    assert preview.status_code == 200
+    assert "Graph reconciliation preflight" in preview.text
+    assert "Likely duplicate identities" in preview.text
+    assert "No data was changed" in preview.text
+    assert "Observatory sensor review" not in client.get("/").text
+    fingerprint = re.search(
+        r'name="reconciliation_fingerprint" type="hidden" value="([a-f0-9]{64})"',
+        preview.text,
+    )
+    assert fingerprint is not None
+
+    confirmed = import_json(
+        client,
+        "atlas.json",
+        json.dumps(example_atlas),
+        form_data={
+            "reconciliation_fingerprint": fingerprint.group(1),
+            "confirm_reconciliation": "yes",
+        },
+    )
+    assert confirmed.status_code == 200
+    assert "Imported reconciled unified atlas" in confirmed.text
+    assert "Observatory sensor review" in client.get("/").text
+    graph = client.get("/graph.json").json()
+    ids = {node["id"] for node in graph["nodes"]}
+    assert "memory.observatory-sensor-review" not in ids
+    assert "entity:technology:lorawan" not in ids
+    mentions = [edge for edge in graph["edges"] if edge["label"] == "mentions"]
+    assert len(mentions) == 1
+    assert "memory.observatory-sensor-review" not in mentions[0]["id"]
 
 
 def test_unified_atlas_prompt_and_schema_are_retrievable(client):

@@ -41,7 +41,76 @@
   <section class="import-results" aria-live="polite">
     <div class="section-heading"><span>{{ t("Result") }}</span><h2>{{ t("Import report") }}</h2></div>
     {% for result in results %}
-    <article class="result result-{{ result.status }}"><span aria-hidden="true">{% if result.status == 'success' %}✓{% else %}!{% endif %}</span><div><h3>{{ result.name }}</h3><p>{{ result.message }}</p></div></article>
+    <article class="result result-{{ result.status }}">
+      <span aria-hidden="true">{% if result.status == 'success' %}✓{% elif result.status == 'warning' %}↻{% else %}!{% endif %}</span>
+      <div>
+        <h3>{{ result.name }}</h3>
+        <p>{{ result.message }}</p>
+        {% if result.reconciliation %}
+        {% set plan = result.reconciliation %}
+        <section class="reconciliation-plan" aria-labelledby="reconciliation-title-{{ loop.index }}">
+          <h4 id="reconciliation-title-{{ loop.index }}">{{ t("Graph reconciliation preflight") }}</h4>
+          <div class="reconciliation-metrics">
+            <div><strong>{{ plan.node_inserts|length }}</strong><span>{{ t("new nodes") }}</span></div>
+            <div><strong>{{ plan.node_updates|length }}</strong><span>{{ t("exact-ID updates") }}</span></div>
+            <div><strong>{{ plan.node_merges|length }}</strong><span>{{ t("identity merges") }}</span></div>
+            <div><strong>{{ plan.edge_inserts|length }}</strong><span>{{ t("new edges") }}</span></div>
+            <div><strong>{{ (plan.edge_updates|length) + (plan.edge_merges|length) }}</strong><span>{{ t("edge updates") }}</span></div>
+          </div>
+
+          {% if plan.node_merges %}
+          <div class="reconciliation-group">
+            <h5>{{ t("Likely duplicate identities") }}</h5>
+            <ul>
+              {% for merge in plan.node_merges %}
+              <li><strong>{{ merge.label }}</strong><code>{{ merge.incoming_id }}</code><span aria-hidden="true">→</span><code>{{ merge.final_id }}</code><small>{{ t(merge.action) }}</small></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if plan.node_updates %}
+          <div class="reconciliation-group">
+            <h5>{{ t("Existing identities that will be updated") }}</h5>
+            <ul>
+              {% for node in plan.node_updates %}
+              <li><strong>{{ node.label }}</strong><code>{{ node.id }}</code><small>{{ node.category }}</small></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if plan.ambiguities %}
+          <div class="reconciliation-group reconciliation-ambiguities" role="alert">
+            <h5>{{ t("Manual correction required") }}</h5>
+            <ul>
+              {% for issue in plan.ambiguities %}
+              <li><strong>{{ issue.label }}</strong><span>{{ issue.reason }}</span><code>{{ issue.candidates|join(', ') }}</code></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if result.confirmable %}
+          <form class="reconciliation-confirm" method="post" action="/import" enctype="multipart/form-data">
+            <input name="csrf_token" type="hidden" value="{{ csrf_token }}">
+            <input name="reconciliation_fingerprint" type="hidden" value="{{ plan.fingerprint }}">
+            <label for="reconcile-file-{{ loop.index }}">
+              <strong>{{ t("Choose the same JSON file again") }}</strong>
+              <span>{{ t("Its checksum and reconciliation plan must match this preflight.") }}</span>
+            </label>
+            <input id="reconcile-file-{{ loop.index }}" name="files" type="file" accept="application/json,.json" required>
+            <label class="confirmation-check">
+              <input name="confirm_reconciliation" type="checkbox" value="yes" required>
+              <span>{{ t("I reviewed this plan. Apply the listed updates and identity merges atomically.") }}</span>
+            </label>
+            <button class="button button-accent" type="submit">{{ t("Confirm & reconcile") }}</button>
+          </form>
+          {% endif %}
+        </section>
+        {% endif %}
+      </div>
+    </article>
     {% endfor %}
     {% set destinations = namespace(memories=false, graph=false) %}
     {% for result in results if result.status == 'success' %}
