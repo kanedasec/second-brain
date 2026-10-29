@@ -3,9 +3,9 @@
 {% block content %}
 <section class="import-page reveal">
   <header class="page-hero compact-hero">
-    <div class="eyebrow"><span>03</span> Import desk</div>
-    <h1>Bring the day<br><em>into focus.</em></h1>
-    <p class="lede">Upload strict JSON produced with the Second Brain prompt. Files are validated before any memory is stored.</p>
+    <div class="eyebrow"><span>03</span> {{ t("Import desk") }}</div>
+    <h1>{{ t("Bring the day") }}<br><em>{{ t("into focus.") }}</em></h1>
+    <p class="lede">{{ t("Upload strict JSON produced with the Second Brain prompt. Files are validated before any memory is stored.") }}</p>
   </header>
 
   <div class="import-layout">
@@ -13,32 +13,32 @@
       <input name="csrf_token" type="hidden" value="{{ csrf_token }}">
       <label class="drop-zone" for="files">
         <span class="drop-icon" aria-hidden="true">↥</span>
-        <strong>Drop JSON files here</strong>
-        <span>or choose from your device</span>
-        <small>Up to {{ max_upload_mb }} MB per file</small>
+        <strong>{{ t("Drop JSON files here") }}</strong>
+        <span>{{ t("or choose from your device") }}</span>
+        <small>{{ t("Up to") }} {{ max_upload_mb }} {{ t("MB per file") }}</small>
       </label>
       <input id="files" name="files" type="file" accept="application/json,.json" multiple required>
       <div id="file-list" class="file-list" aria-live="polite"></div>
-      <button class="button button-dark button-wide" type="submit">Validate & import</button>
+      <button class="button button-dark button-wide" type="submit">{{ t("Validate & import") }}</button>
     </form>
     <aside class="import-notes">
-      <div class="section-heading"><span>Method</span><h2>Three steps</h2></div>
+      <div class="section-heading"><span>{{ t("Method") }}</span><h2>{{ t("Three steps") }}</h2></div>
       <ol>
-        <li><span>01</span><div><strong>Copy the prompt</strong><p>Open it in ChatGPT, Claude, Copilot, or another capable model.</p></div></li>
-        <li><span>02</span><div><strong>Add your source</strong><p>Paste notes, email, briefings, or transcript text after the divider.</p></div></li>
-        <li><span>03</span><div><strong>Import the JSON</strong><p>Save the model’s JSON response and upload it here.</p></div></li>
+        <li><span>01</span><div><strong>{{ t("Copy the prompt") }}</strong><p>{{ t("Open it in ChatGPT, Claude, Copilot, or another capable model.") }}</p></div></li>
+        <li><span>02</span><div><strong>{{ t("Add your source") }}</strong><p>{{ t("Paste notes, email, briefings, or transcript text after the divider.") }}</p></div></li>
+        <li><span>03</span><div><strong>{{ t("Import the JSON") }}</strong><p>{{ t("Save the model’s JSON response and upload it here.") }}</p></div></li>
       </ol>
-      <a class="text-link" href="/prompt">Open the AI prompt →</a>
+      <a class="text-link" href="/prompt">{{ t("Open the AI prompt →") }}</a>
     </aside>
   </div>
 
   {% if results %}
   <section class="import-results" aria-live="polite">
-    <div class="section-heading"><span>Result</span><h2>Import report</h2></div>
+    <div class="section-heading"><span>{{ t("Result") }}</span><h2>{{ t("Import report") }}</h2></div>
     {% for result in results %}
-    <article class="result result-{{ result.status }}"><span aria-hidden="true">{% if result.status == 'success' %}✓{% else %}!{% endif %}</span><div><h3>{{ result.name }}</h3><p>{{ result.message }}{% if result.count %} {{ result.count }} memories.{% endif %}</p></div></article>
+    <article class="result result-{{ result.status }}"><span aria-hidden="true">{% if result.status == 'success' %}✓{% else %}!{% endif %}</span><div><h3>{{ result.name }}</h3><p>{{ result.message }}{% if result.count %} {{ result.count }} {{ t("memories.") }}{% endif %}</p></div></article>
     {% endfor %}
-    {% if results|selectattr('status', 'equalto', 'success')|list %}<a class="button button-accent" href="/">View imported memories</a>{% endif %}
+    {% if results|selectattr('status', 'equalto', 'success')|list %}<a class="button button-accent" href="/">{{ t("View imported memories") }}</a>{% endif %}
   </section>
   {% endif %}
 </section>

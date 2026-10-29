@@ -1,32 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#f3efe5">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07070d">
   <title>{% block title %}Second Brain{% endblock %}</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
   <script src="{{ url_for('static', path='/app.js') }}" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#main">{{ t("Skip to content") }}</a>
   <div class="paper-noise" aria-hidden="true"></div>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Second Brain home">
+    <a class="brand" href="/" aria-label="{{ t('Second Brain home') }}">
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <span><strong>SECOND</strong><em>BRAIN</em></span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">
-      <span class="sr-only">Toggle navigation</span>
+      <span class="sr-only">{{ t("Toggle navigation") }}</span>
       <span></span><span></span>
     </button>
-    <nav id="primary-nav" class="primary-nav" aria-label="Primary navigation">
-      <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>Memories</a>
-      <a href="/tasks" {% if current_path == '/tasks' %}aria-current="page"{% endif %}>Tasks</a>
-      <a href="/import" {% if current_path == '/import' %}aria-current="page"{% endif %}>Import</a>
-      <a href="/prompt" {% if current_path == '/prompt' %}aria-current="page"{% endif %}>AI prompt</a>
+    <nav id="primary-nav" class="primary-nav" aria-label="{{ t('Primary navigation') }}">
+      <a href="/" {% if current_path == '/' %}aria-current="page"{% endif %}>{{ t("Memories") }}</a>
+      <a href="/graph" {% if current_path == '/graph' %}aria-current="page"{% endif %}>{{ t("Graph") }}</a>
+      <a href="/tasks" {% if current_path == '/tasks' %}aria-current="page"{% endif %}>{{ t("Tasks") }}</a>
+      <a href="/import" {% if current_path == '/import' %}aria-current="page"{% endif %}>{{ t("Import") }}</a>
+      <a href="/prompt" {% if current_path == '/prompt' %}aria-current="page"{% endif %}>{{ t("AI prompt") }}</a>
+      <span class="lang-toggle" role="group" aria-label="{{ t('Language') }}">
+        <a href="/set-language?lang=en&next={{ current_path }}" {% if lang == 'en' %}aria-current="true"{% endif %}>EN</a>
+        <span aria-hidden="true">/</span>
+        <a href="/set-language?lang=pt-BR&next={{ current_path }}" {% if lang == 'pt-BR' %}aria-current="true"{% endif %}>PT</a>
+      </span>
     </nav>
   </header>
 
@@ -35,8 +41,8 @@
   </main>
 
   <footer class="site-footer">
-    <span>Second Brain / private memory atlas</span>
-    <span>Source truth and AI advice stay visibly separate.</span>
+    <span>{{ t("Second Brain / private memory atlas") }}</span>
+    <span>{{ t("Source truth and AI advice stay visibly separate.") }}</span>
   </footer>
 </body>
 </html>

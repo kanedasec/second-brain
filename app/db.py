@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
-from app.schemas import KnowledgeBundle
+from app.schemas import GraphBundle, KnowledgeBundle
 
 
 SCHEMA = """
@@ -108,6 +108,59 @@ CREATE TABLE IF NOT EXISTS recommendations (
     related_topic TEXT,
     ai_generated INTEGER NOT NULL DEFAULT 1 CHECK (ai_generated = 1)
 );
+
+-- Graph schema (version 2.0): first-class nodes and directional edges.
+-- Nodes and edges upsert across imports so the graph accumulates; an
+-- identical uploaded file is still rejected by its checksum.
+
+CREATE TABLE IF NOT EXISTS graph_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    checksum TEXT NOT NULL UNIQUE,
+    source_filename TEXT NOT NULL,
+    generator_provider TEXT NOT NULL,
+    generator_model TEXT,
+    generated_at TEXT NOT NULL,
+    imported_at TEXT NOT NULL,
+    node_count INTEGER NOT NULL CHECK (node_count > 0),
+    edge_count INTEGER NOT NULL CHECK (edge_count >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS graph_nodes (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    label TEXT NOT NULL,
+    description TEXT,
+    occurred_at TEXT,
+    source_type TEXT,
+    source_label TEXT,
+    source_excerpt TEXT,
+    provenance TEXT NOT NULL DEFAULT 'source'
+        CHECK (provenance IN ('source', 'ai_inferred')),
+    metadata_json TEXT,
+    import_id INTEGER REFERENCES graph_imports(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS graph_nodes_category_idx ON graph_nodes(category);
+
+CREATE TABLE IF NOT EXISTS graph_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    edge_key TEXT NOT NULL UNIQUE,
+    source_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL REFERENCES graph_nodes(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    directed INTEGER NOT NULL DEFAULT 1 CHECK (directed IN (0, 1)),
+    description TEXT,
+    evidence TEXT,
+    provenance TEXT NOT NULL DEFAULT 'source'
+        CHECK (provenance IN ('source', 'ai_inferred')),
+    metadata_json TEXT,
+    import_id INTEGER REFERENCES graph_imports(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS graph_edges_source_idx ON graph_edges(source_id);
+CREATE INDEX IF NOT EXISTS graph_edges_target_idx ON graph_edges(target_id);
 """
 
 MEMORY_CHILD_QUERIES = {
@@ -570,3 +623,364 @@ class Repository:
             else:
                 board["later"].append(action)
         return board
+
+    # --- Graph (version 2.0) ---------------------------------------------
+
+    def import_graph_bundle(self, bundle: GraphBundle, filename: str, raw_data: bytes) -> dict[str, int]:
+        checksum = hashlib.sha256(raw_data).hexdigest()
+        now = utc_iso(datetime.now(UTC))
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                if connection.execute(
+                    "SELECT 1 FROM graph_imports WHERE checksum = ?", (checksum,)
+                ).fetchone():
+                    raise DuplicateBundleError("this exact JSON file has already been imported")
+
+                cursor = connection.execute(
+                    """
+                    INSERT INTO graph_imports (
+                        checksum, source_filename, generator_provider, generator_model,
+                        generated_at, imported_at, node_count, edge_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        checksum,
+                        filename,
+                        bundle.generator.provider,
+                        bundle.generator.model,
+                        utc_iso(bundle.generated_at),
+                        now,
+                        len(bundle.nodes),
+                        len(bundle.edges),
+                    ),
+                )
+                import_id = cursor.lastrowid
+
+                for node in bundle.nodes:
+                    source = node.source
+                    connection.execute(
+                        """
+                        INSERT INTO graph_nodes (
+                            id, category, label, description, occurred_at,
+                            source_type, source_label, source_excerpt, provenance,
+                            metadata_json, import_id, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(id) DO UPDATE SET
+                            category = excluded.category,
+                            label = excluded.label,
+                            description = excluded.description,
+                            occurred_at = excluded.occurred_at,
+                            source_type = excluded.source_type,
+                            source_label = excluded.source_label,
+                            source_excerpt = excluded.source_excerpt,
+                            provenance = excluded.provenance,
+                            metadata_json = excluded.metadata_json,
+                            import_id = excluded.import_id,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            node.id,
+                            node.category,
+                            node.label,
+                            node.description,
+                            utc_iso(node.occurred_at) if node.occurred_at else None,
+                            source.type if source else None,
+                            source.label if source else None,
+                            source.excerpt if source else None,
+                            node.provenance,
+                            json.dumps(node.metadata, ensure_ascii=False) if node.metadata else None,
+                            import_id,
+                            now,
+                        ),
+                    )
+
+                for edge in bundle.edges:
+                    edge_key = edge.id or f"{edge.source}|{edge.label}|{edge.target}"
+                    connection.execute(
+                        """
+                        INSERT INTO graph_edges (
+                            edge_key, source_id, target_id, label, directed,
+                            description, evidence, provenance, metadata_json,
+                            import_id, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(edge_key) DO UPDATE SET
+                            source_id = excluded.source_id,
+                            target_id = excluded.target_id,
+                            label = excluded.label,
+                            directed = excluded.directed,
+                            description = excluded.description,
+                            evidence = excluded.evidence,
+                            provenance = excluded.provenance,
+                            metadata_json = excluded.metadata_json,
+                            import_id = excluded.import_id,
+                            updated_at = excluded.updated_at
+                        """,
+                        (
+                            edge_key,
+                            edge.source,
+                            edge.target,
+                            edge.label,
+                            1 if edge.directed else 0,
+                            edge.description,
+                            edge.evidence,
+                            edge.provenance,
+                            json.dumps(edge.metadata, ensure_ascii=False) if edge.metadata else None,
+                            import_id,
+                            now,
+                        ),
+                    )
+                connection.commit()
+                return {"nodes": len(bundle.nodes), "edges": len(bundle.edges)}
+            except Exception:
+                connection.rollback()
+                raise
+
+    def graph_stats(self) -> dict[str, int]:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM graph_nodes) AS graph_nodes,
+                    (SELECT COUNT(*) FROM graph_edges) AS graph_edges
+                """
+            ).fetchone()
+            return dict(row)
+
+    def _stored_graph(self, connection: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
+        node_rows = connection.execute(
+            """
+            SELECT id, category, label, description, occurred_at, provenance,
+                   source_type, source_label
+            FROM graph_nodes ORDER BY id
+            """
+        ).fetchall()
+        edge_rows = connection.execute(
+            """
+            SELECT edge_key AS id, source_id AS source, target_id AS target,
+                   label, directed, provenance
+            FROM graph_edges ORDER BY id
+            """
+        ).fetchall()
+        nodes = [dict(row) | {"origin": "graph"} for row in node_rows]
+        edges = [dict(row) | {"directed": bool(row["directed"]), "origin": "graph"} for row in edge_rows]
+        return {"nodes": nodes, "edges": edges}
+
+    def _projected_v1_graph(self, connection: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
+        """Project stored v1 memory records into graph nodes and edges so the
+        existing record data appears in the graph view. Projected ids are
+        namespaced (``mem:``/``topic:``/``entity:``/``person:``) to avoid
+        colliding with author-provided graph node ids."""
+        entity_category = {
+            "person": "person",
+            "organization": "organization",
+            "software": "technology",
+            "device": "technology",
+            "architecture": "technology",
+            "place": "place",
+            "concept": "concept",
+            "other": "other",
+        }
+        nodes: dict[str, dict[str, Any]] = {}
+        edges: list[dict[str, Any]] = []
+
+        memories = connection.execute(
+            "SELECT id, title, summary, occurred_at, people_json FROM memories"
+        ).fetchall()
+        for memory in memories:
+            mem_id = f"mem:{memory['id']}"
+            nodes[mem_id] = {
+                "id": mem_id,
+                "category": "memory",
+                "label": memory["title"],
+                "description": memory["summary"],
+                "occurred_at": memory["occurred_at"],
+                "provenance": "source",
+                "record_id": memory["id"],
+                "origin": "memory",
+            }
+            for name in json.loads(memory["people_json"] or "[]"):
+                person_id = f"person:{slugify(name)}"
+                nodes.setdefault(
+                    person_id,
+                    {"id": person_id, "category": "person", "label": name,
+                     "provenance": "source", "origin": "memory"},
+                )
+                edges.append({
+                    "id": f"{mem_id}|involves|{person_id}", "source": mem_id,
+                    "target": person_id, "label": "involves", "directed": True,
+                    "provenance": "source", "origin": "memory",
+                })
+
+        for row in connection.execute(
+            """
+            SELECT mt.memory_id, t.slug, t.name
+            FROM memory_topics mt JOIN topics t ON t.id = mt.topic_id
+            """
+        ).fetchall():
+            topic_id = f"topic:{row['slug']}"
+            nodes.setdefault(
+                topic_id,
+                {"id": topic_id, "category": "topic", "label": row["name"],
+                 "provenance": "source", "origin": "memory"},
+            )
+            mem_id = f"mem:{row['memory_id']}"
+            edges.append({
+                "id": f"{mem_id}|about|{topic_id}", "source": mem_id, "target": topic_id,
+                "label": "about", "directed": True, "provenance": "source", "origin": "memory",
+            })
+
+        for row in connection.execute(
+            "SELECT memory_id, name, type FROM entities"
+        ).fetchall():
+            category = entity_category.get(row["type"], "other")
+            entity_id = f"entity:{category}:{slugify(row['name'])}"
+            nodes.setdefault(
+                entity_id,
+                {"id": entity_id, "category": category, "label": row["name"],
+                 "provenance": "source", "origin": "memory"},
+            )
+            mem_id = f"mem:{row['memory_id']}"
+            edges.append({
+                "id": f"{mem_id}|mentions|{entity_id}", "source": mem_id, "target": entity_id,
+                "label": "mentions", "directed": True, "provenance": "source", "origin": "memory",
+            })
+
+        return {"nodes": list(nodes.values()), "edges": edges}
+
+    def graph_payload(self) -> dict[str, list[dict[str, Any]]]:
+        """Viewer payload: author-provided graph unified with the projection of
+        v1 memory records. Stored graph nodes win id collisions."""
+        with self.connect() as connection:
+            stored = self._stored_graph(connection)
+            projected = self._projected_v1_graph(connection)
+        by_id = {node["id"]: node for node in projected["nodes"]}
+        for node in stored["nodes"]:
+            by_id[node["id"]] = node
+        edges = {edge["id"]: edge for edge in projected["edges"]}
+        for edge in stored["edges"]:
+            edges[edge["id"]] = edge
+        return {"nodes": list(by_id.values()), "edges": list(edges.values())}
+
+    def node_detail(self, node_id: str) -> dict[str, Any] | None:
+        payload = self.graph_payload()
+        nodes = {node["id"]: node for node in payload["nodes"]}
+        node = nodes.get(node_id)
+        if node is None:
+            return None
+        neighbors = []
+        for edge in payload["edges"]:
+            if edge["source"] == node_id:
+                other = nodes.get(edge["target"])
+                neighbors.append({"edge": edge, "direction": "out", "node": other})
+            elif edge["target"] == node_id:
+                other = nodes.get(edge["source"])
+                neighbors.append({"edge": edge, "direction": "in", "node": other})
+        detail = dict(node)
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT description, occurred_at, source_type, source_label,
+                       source_excerpt, metadata_json
+                FROM graph_nodes WHERE id = ?
+                """,
+                (node_id,),
+            ).fetchone()
+        if row:
+            detail.update({k: row[k] for k in row.keys() if row[k] is not None})
+            if detail.get("metadata_json"):
+                detail["metadata"] = json.loads(detail.pop("metadata_json"))
+        detail["neighbors"] = neighbors
+        return detail
+
+    def export_graph(
+        self, seeds: list[str] | None = None, depth: int = 3
+    ) -> dict[str, Any] | None:
+        """Export the graph as a schema-2.0 GraphBundle that re-imports cleanly.
+
+        With no seeds, exports the whole graph (stored v2 unified with the v1
+        projection). With seeds, exports only those nodes plus everything within
+        ``depth`` relationship hops (edges treated as undirected for reach), and
+        the edges among the included nodes."""
+        payload = self.graph_payload()
+        all_nodes = {node["id"]: node for node in payload["nodes"]}
+        if not all_nodes:
+            return None
+        edges = payload["edges"]
+
+        if seeds:
+            seed_ids = [s for s in seeds if s in all_nodes]
+            if not seed_ids:
+                return None
+            adjacency: dict[str, set[str]] = {}
+            for edge in edges:
+                adjacency.setdefault(edge["source"], set()).add(edge["target"])
+                adjacency.setdefault(edge["target"], set()).add(edge["source"])
+            included = set(seed_ids)
+            frontier = set(seed_ids)
+            for _ in range(max(1, depth)):
+                nxt = {
+                    other
+                    for nid in frontier
+                    for other in adjacency.get(nid, ())
+                    if other not in included
+                }
+                included |= nxt
+                frontier = nxt
+                if not frontier:
+                    break
+            node_payload = [all_nodes[i] for i in all_nodes if i in included]
+            edge_payload = [
+                e for e in edges if e["source"] in included and e["target"] in included
+            ]
+        else:
+            node_payload = list(all_nodes.values())
+            edge_payload = edges
+
+        with self.connect() as connection:
+            stored = {
+                row["id"]: row
+                for row in connection.execute(
+                    "SELECT id, source_type, source_label, source_excerpt, metadata_json"
+                    " FROM graph_nodes"
+                ).fetchall()
+            }
+        nodes: list[dict[str, Any]] = []
+        for item in node_payload:
+            node: dict[str, Any] = {
+                "id": item["id"],
+                "category": item["category"],
+                "label": item["label"],
+                "provenance": item.get("provenance") or "source",
+            }
+            if item.get("description"):
+                node["description"] = item["description"]
+            if item.get("occurred_at"):
+                node["occurred_at"] = item["occurred_at"]
+            row = stored.get(item["id"])
+            if row:
+                if row["source_label"]:
+                    source = {"type": row["source_type"] or "other", "label": row["source_label"]}
+                    if row["source_excerpt"]:
+                        source["excerpt"] = row["source_excerpt"]
+                    node["source"] = source
+                if row["metadata_json"]:
+                    node["metadata"] = json.loads(row["metadata_json"])
+            nodes.append(node)
+        out_edges = [
+            {
+                "source": edge["source"],
+                "target": edge["target"],
+                "label": edge["label"],
+                "directed": bool(edge.get("directed", True)),
+                "provenance": edge.get("provenance") or "source",
+            }
+            for edge in edge_payload
+        ]
+        return {
+            "schema_version": "2.0",
+            "generated_at": utc_iso(datetime.now(UTC)),
+            "generator": {"provider": "second-brain", "model": "export"},
+            "nodes": nodes,
+            "edges": out_edges,
+        }

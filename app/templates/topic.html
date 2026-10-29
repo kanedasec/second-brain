@@ -2,39 +2,39 @@
 {% block title %}{{ topic.name }} · Second Brain{% endblock %}
 {% block content %}
 <section class="topic-page reveal">
-  <a class="back-link" href="/">← All topics</a>
+  <a class="back-link" href="/">{{ t("← All topics") }}</a>
   <header class="topic-hero">
-    <div class="eyebrow"><span>Topic</span> Living dossier</div>
+    <div class="eyebrow"><span>{{ t("Topic") }}</span> {{ t("Living dossier") }}</div>
     <h1>{{ topic.name }}</h1>
-    <p class="lede">{{ topic.memories|length }} connected memories, assembled into what you know and what remains unresolved.</p>
+    <p class="lede">{{ topic.memories|length }} {{ t("connected memories, assembled into what you know and what remains unresolved.") }}</p>
   </header>
 
   <div class="topic-columns">
     <section>
-      <div class="section-heading"><span>Known</span><h2>Grounded facts</h2></div>
+      <div class="section-heading"><span>{{ t("Known") }}</span><h2>{{ t("Grounded facts") }}</h2></div>
       {% if topic.facts %}
       <div class="fact-list compact">
         {% for fact in topic.facts %}<article><span class="confidence confidence-{{ fact.confidence }}">{{ fact.confidence }}</span><p>{{ fact.statement }}</p><a href="/memories/{{ fact.memory_id }}">{{ fact.memory_title }} ↗</a></article>{% endfor %}
       </div>
-      {% else %}<p class="quiet">No grounded facts are attached to this topic yet.</p>{% endif %}
+      {% else %}<p class="quiet">{{ t("No grounded facts are attached to this topic yet.") }}</p>{% endif %}
     </section>
     <section class="needs-column">
-      <div class="section-heading"><span>Unknown</span><h2>What to learn</h2></div>
+      <div class="section-heading"><span>{{ t("Unknown") }}</span><h2>{{ t("What to learn") }}</h2></div>
       {% if topic.gaps %}
-      {% for gap in topic.gaps %}<article class="gap-card"><h3>{{ gap.question }}</h3><p>{{ gap.why_it_matters }}</p><a href="/memories/{{ gap.memory_id }}">From {{ gap.memory_title }}</a></article>{% endfor %}
-      {% else %}<p class="quiet">No explicit knowledge gaps for this topic.</p>{% endif %}
+      {% for gap in topic.gaps %}<article class="gap-card"><h3>{{ gap.question }}</h3><p>{{ gap.why_it_matters }}</p><a href="/memories/{{ gap.memory_id }}">{{ t("From") }} {{ gap.memory_title }}</a></article>{% endfor %}
+      {% else %}<p class="quiet">{{ t("No explicit knowledge gaps for this topic.") }}</p>{% endif %}
     </section>
   </div>
 
   {% if topic.recommendations %}
   <section class="topic-recommendations">
-    <div class="section-heading"><span>AI advice</span><h2>Possible next moves</h2></div>
+    <div class="section-heading"><span>{{ t("AI advice") }}</span><h2>{{ t("Possible next moves") }}</h2></div>
     <div class="recommendation-grid">{% for item in topic.recommendations %}<article><span>AI</span><h3>{{ item.advice }}</h3><p>{{ item.rationale }}</p></article>{% endfor %}</div>
   </section>
   {% endif %}
 
   <section class="topic-chronology">
-    <div class="section-heading"><span>Archive</span><h2>Connected memories</h2></div>
+    <div class="section-heading"><span>{{ t("Archive") }}</span><h2>{{ t("Connected memories") }}</h2></div>
     <ol>{% for memory in topic.memories %}<li><time>{{ memory.occurred_at|display_datetime(true) }}</time><div><a href="/memories/{{ memory.id }}">{{ memory.title }}</a><p>{{ memory.context }}</p></div></li>{% endfor %}</ol>
   </section>
 </section>

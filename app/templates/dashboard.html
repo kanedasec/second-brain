@@ -2,17 +2,17 @@
 {% block title %}Memory atlas · Second Brain{% endblock %}
 {% block content %}
 <section class="hero reveal">
-  <div class="eyebrow"><span>01</span> Memory atlas</div>
+  <div class="eyebrow"><span>01</span> {{ t("Memory atlas") }}</div>
   <div class="hero-grid">
     <div>
-      <h1>Find the thread<br><em>you almost forgot.</em></h1>
-      <p class="lede">A searchable record of decisions, conversations, loose ends, and the context around them.</p>
+      <h1>{{ t("Find the thread") }}<br><em>{{ t("you almost forgot.") }}</em></h1>
+      <p class="lede">{{ t("A searchable record of decisions, conversations, loose ends, and the context around them.") }}</p>
     </div>
-    <dl class="stats" aria-label="Knowledge base summary">
-      <div><dt>Memories</dt><dd>{{ stats.memories }}</dd></div>
-      <div><dt>Topics</dt><dd>{{ stats.topics }}</dd></div>
-      <div><dt>Open tasks</dt><dd>{{ stats.open_actions }}</dd></div>
-      <div><dt>Questions</dt><dd>{{ stats.gaps }}</dd></div>
+    <dl class="stats" aria-label="{{ t('Knowledge base summary') }}">
+      <div><dt>{{ t("Memories") }}</dt><dd>{{ stats.memories }}</dd></div>
+      <div><dt>{{ t("Topics") }}</dt><dd>{{ stats.topics }}</dd></div>
+      <div><dt>{{ t("Open tasks") }}</dt><dd>{{ stats.open_actions }}</dd></div>
+      <div><dt>{{ t("Questions") }}</dt><dd>{{ stats.gaps }}</dd></div>
     </dl>
   </div>
 </section>
@@ -20,36 +20,36 @@
 <section class="workspace reveal">
   <form class="search-panel" method="get" action="/" role="search">
     <div class="search-field">
-      <label for="q">Search your context</label>
+      <label for="q">{{ t("Search your context") }}</label>
       <div class="search-input-wrap">
         <span aria-hidden="true">⌕</span>
-        <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="Decisions, people, systems, ideas…" autocomplete="off">
+        <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="{{ t('Decisions, people, systems, ideas…') }}" autocomplete="off">
         <kbd>/</kbd>
       </div>
     </div>
     <div class="filter-grid">
-      <label>Topic
+      <label>{{ t("Topic") }}
         <select name="topic">
-          <option value="">All topics</option>
+          <option value="">{{ t("All topics") }}</option>
           {% for item in topics %}
           <option value="{{ item.slug }}" {% if filters.topic == item.slug %}selected{% endif %}>{{ item.name }} · {{ item.memory_count }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>From <input name="date_from" type="date" value="{{ filters.date_from }}"></label>
-      <label>To <input name="date_to" type="date" value="{{ filters.date_to }}"></label>
-      <button class="button button-dark" type="submit">Explore</button>
+      <label>{{ t("From") }} <input name="date_from" type="date" value="{{ filters.date_from }}"></label>
+      <label>{{ t("To") }} <input name="date_to" type="date" value="{{ filters.date_to }}"></label>
+      <button class="button button-dark" type="submit">{{ t("Explore") }}</button>
     </div>
     {% if filters.q or filters.topic or filters.date_from or filters.date_to %}
-    <a class="clear-filters" href="/">Clear filters</a>
+    <a class="clear-filters" href="/">{{ t("Clear filters") }}</a>
     {% endif %}
   </form>
 
   <div class="content-grid">
     <aside class="topic-index" aria-labelledby="topic-index-title">
       <div class="section-heading">
-        <span>Index</span>
-        <h2 id="topic-index-title">Topics</h2>
+        <span>{{ t("Index") }}</span>
+        <h2 id="topic-index-title">{{ t("Topics") }}</h2>
       </div>
       {% if topics %}
       <ol>
@@ -63,14 +63,14 @@
         {% endfor %}
       </ol>
       {% else %}
-      <p class="quiet">Your topic index will grow as memories arrive.</p>
+      <p class="quiet">{{ t("Your topic index will grow as memories arrive.") }}</p>
       {% endif %}
     </aside>
 
     <div class="memory-stream">
       <div class="stream-header">
-        <div><span>Chronology</span><h2>{{ total }} {% if total == 1 %}memory{% else %}memories{% endif %}</h2></div>
-        <a class="button button-accent" href="/import">+ Import JSON</a>
+        <div><span>{{ t("Chronology") }}</span><h2>{{ total }} {{ t("memory") if total == 1 else t("memories") }}</h2></div>
+        <a class="button button-accent" href="/import">{{ t("+ Import JSON") }}</a>
       </div>
       {% if memories %}
       <div class="timeline">
@@ -78,7 +78,7 @@
         <article class="memory-card reveal">
           <div class="timeline-marker" aria-hidden="true"></div>
           <div class="memory-meta">
-            {% if memory.occurred_at %}<time datetime="{{ memory.occurred_at }}">{{ memory.occurred_at|display_datetime(true) }}</time>{% else %}<span>Date unknown</span>{% endif %}
+            {% if memory.occurred_at %}<time datetime="{{ memory.occurred_at }}">{{ memory.occurred_at|display_datetime(true) }}</time>{% else %}<span>{{ t("Date unknown") }}</span>{% endif %}
             <span>{{ memory.source_type }}</span>
           </div>
           <h3><a href="/memories/{{ memory.id }}">{{ memory.title }}</a></h3>
@@ -88,28 +88,28 @@
           </div>
           {% if memory.open_actions or memory.gap_count %}
           <div class="signals">
-            {% if memory.open_actions %}<span class="signal signal-task">{{ memory.open_actions }} open</span>{% endif %}
-            {% if memory.gap_count %}<span class="signal">{{ memory.gap_count }} to learn</span>{% endif %}
+            {% if memory.open_actions %}<span class="signal signal-task">{{ memory.open_actions }} {{ t("open") }}</span>{% endif %}
+            {% if memory.gap_count %}<span class="signal">{{ memory.gap_count }} {{ t("to learn") }}</span>{% endif %}
           </div>
           {% endif %}
-          <a class="card-arrow" href="/memories/{{ memory.id }}" aria-label="Read {{ memory.title }}">↗</a>
+          <a class="card-arrow" href="/memories/{{ memory.id }}" aria-label="{{ t('Read') }} {{ memory.title }}">↗</a>
         </article>
         {% endfor %}
       </div>
       {% else %}
       <div class="empty-state">
         <span class="empty-glyph" aria-hidden="true">∴</span>
-        <h2>{% if filters.q or filters.topic %}No matching thread.{% else %}Your atlas starts empty.{% endif %}</h2>
-        <p>{% if filters.q or filters.topic %}Try a broader search or clear the filters.{% else %}Use the AI prompt with notes, email, or a transcript, then import the resulting JSON.{% endif %}</p>
-        <a class="button button-dark" href="{% if filters.q or filters.topic %}/{% else %}/prompt{% endif %}">{% if filters.q or filters.topic %}Reset view{% else %}Get the prompt{% endif %}</a>
+        <h2>{% if filters.q or filters.topic %}{{ t("No matching thread.") }}{% else %}{{ t("Your atlas starts empty.") }}{% endif %}</h2>
+        <p>{% if filters.q or filters.topic %}{{ t("Try a broader search or clear the filters.") }}{% else %}{{ t("Use the AI prompt with notes, email, or a transcript, then import the resulting JSON.") }}{% endif %}</p>
+        <a class="button button-dark" href="{% if filters.q or filters.topic %}/{% else %}/prompt{% endif %}">{% if filters.q or filters.topic %}{{ t("Reset view") }}{% else %}{{ t("Get the prompt") }}{% endif %}</a>
       </div>
       {% endif %}
 
       {% if pages > 1 %}
-      <nav class="pagination" aria-label="Memory pages">
-        {% if page > 1 %}<a href="?q={{ filters.q }}&topic={{ filters.topic }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&page={{ page - 1 }}">← Newer</a>{% else %}<span></span>{% endif %}
+      <nav class="pagination" aria-label="{{ t('Memory pages') }}">
+        {% if page > 1 %}<a href="?q={{ filters.q }}&topic={{ filters.topic }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&page={{ page - 1 }}">{{ t("← Newer") }}</a>{% else %}<span></span>{% endif %}
         <span>{{ page }} / {{ pages }}</span>
-        {% if page < pages %}<a href="?q={{ filters.q }}&topic={{ filters.topic }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&page={{ page + 1 }}">Older →</a>{% endif %}
+        {% if page < pages %}<a href="?q={{ filters.q }}&topic={{ filters.topic }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&page={{ page + 1 }}">{{ t("Older →") }}</a>{% endif %}
       </nav>
       {% endif %}
     </div>

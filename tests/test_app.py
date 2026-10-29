@@ -124,3 +124,139 @@ def test_production_auth_protects_data_but_not_readiness(settings):
         assert protected_client.get("/ready").status_code == 200
         assert protected_client.get("/").status_code == 401
         assert protected_client.get("/", headers={"Authorization": f"Basic {token}"}).status_code == 200
+
+
+def import_graph(client, example_graph):
+    form = client.get("/import")
+    assert form.status_code == 200
+    csrf_token = client.cookies["second_brain_csrf"]
+    return client.post(
+        "/import",
+        data={"csrf_token": csrf_token},
+        files={"files": ("graph.json", json.dumps(example_graph), "application/json")},
+    )
+
+
+def test_graph_import_and_graph_json(client, example_graph):
+    response = import_graph(client, example_graph)
+    assert response.status_code == 200
+    assert "Imported graph" in response.text
+
+    graph = client.get("/graph.json").json()
+    assert len(graph["nodes"]) == 9
+    assert len(graph["edges"]) == 9
+
+    detail = client.get("/nodes/project.sensor-array")
+    assert detail.status_code == 200
+    assert detail.json()["category"] == "project"
+    assert client.get("/nodes/does.not-exist").status_code == 404
+
+
+def test_graph_prompt_and_schema_are_retrievable(client):
+    prompt = client.get("/graph-prompt.txt")
+    assert prompt.status_code == 200
+    assert "knowledge graph" in prompt.text.lower()
+    schema = client.get("/graph-schema.json")
+    assert schema.status_code == 200
+    assert schema.json()["properties"]["schema_version"]["const"] == "2.0"
+
+
+def test_graph_page_loads_viewer(client):
+    response = client.get("/graph")
+    assert response.status_code == 200
+    assert "/static/vendor/force-graph.min.js" in response.text
+    assert "/static/graph.js" in response.text
+    assert 'id="graph-canvas"' in response.text
+    # Phase 3 exploration controls
+    assert 'id="graph-search-input"' in response.text
+    assert 'id="graph-ai-toggle"' in response.text
+    assert 'id="graph-reset"' in response.text
+
+
+def test_language_toggle_sets_cookie_and_translates(client, example_bundle):
+    # default English
+    assert "Memories" in client.get("/").text
+    # switch to Brazilian Portuguese
+    resp = client.get("/set-language", params={"lang": "pt-BR", "next": "/"}, follow_redirects=False)
+    assert resp.status_code == 303
+    assert "lang=pt-BR" in resp.headers.get("set-cookie", "")
+    body = client.get("/").text  # cookie now stored by the test client
+    assert "Memórias" in body and "Cronologia" in body
+
+
+def test_set_language_rejects_offsite_redirect(client):
+    resp = client.get(
+        "/set-language", params={"lang": "en", "next": "//evil.example"}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+
+
+def test_topic_page_renders(client, example_bundle):
+    import_json(client, "memory.json", json.dumps(example_bundle))
+    # the example bundle has an "Observatory project" topic
+    page = client.get("/topics/observatory-project")
+    assert page.status_code == 200
+    assert "Grounded facts" in page.text
+
+
+def test_prompt_library_page_and_downloads(client):
+    page = client.get("/prompt")
+    assert page.status_code == 200
+    # cards are listed but the full prompt bodies are NOT inlined in the page
+    assert 'data-prompt-id="email"' in page.text
+    assert 'data-prompt-id="graph"' in page.text
+    assert "Email day review" in page.text
+    assert "Source material begins after this line" not in page.text  # not fully exposed
+
+    email = client.get("/prompts/email.txt")
+    assert email.status_code == 200
+    assert "Email day review" in email.text
+    assert "Prepared for the Second Brain graph schema generator" in email.text
+
+    graph = client.get("/prompts/graph.txt")
+    assert graph.status_code == 200
+    assert '"schema_version"' in graph.text  # schema appended for the generator
+
+    assert client.get("/prompts/nope.txt").status_code == 404
+
+
+def test_export_graph_roundtrips(client, example_graph):
+    import_graph(client, example_graph)
+    resp = client.get("/export/graph.json")
+    assert resp.status_code == 200
+    assert 'filename="second-brain-graph.json"' in resp.headers["content-disposition"]
+    data = resp.json()
+    assert data["schema_version"] == "2.0"
+    from app.schemas import GraphBundle
+    GraphBundle.model_validate(data)  # the export must re-import cleanly
+
+
+def test_export_graph_empty_is_404(client):
+    assert client.get("/export/graph.json").status_code == 404
+
+
+def test_presentation_prompt_available(client):
+    page = client.get("/prompt")
+    assert 'data-prompt-id="presentation"' in page.text
+    assert "Presentation builder" in page.text
+    txt = client.get("/prompts/presentation.txt")
+    assert txt.status_code == 200
+    assert "single-page html" in txt.text.lower()
+
+
+def test_export_selection_subgraph(client, example_graph):
+    import_graph(client, example_graph)
+    # seed one node; depth 1 should be smaller than the whole graph
+    whole = client.get("/export/graph.json").json()
+    sub = client.get("/export/graph.json", params={"nodes": "project.sensor-array", "depth": 1}).json()
+    from app.schemas import GraphBundle
+    GraphBundle.model_validate(sub)  # re-importable
+    ids = {n["id"] for n in sub["nodes"]}
+    assert "project.sensor-array" in ids
+    assert len(sub["nodes"]) < len(whole["nodes"])  # a neighbourhood, not everything
+    # depth 3 reaches more than depth 1 from the same seed
+    sub3 = client.get("/export/graph.json", params={"nodes": "project.sensor-array", "depth": 3}).json()
+    assert len(sub3["nodes"]) >= len(sub["nodes"])
+    # unknown seed -> 404
+    assert client.get("/export/graph.json", params={"nodes": "nope.zzz"}).status_code == 404

@@ -12,15 +12,35 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from app.config import Settings
 from app.db import DuplicateBundleError, DuplicateMemoryError, Repository
-from app.prompt import complete_prompt, json_schema
-from app.schemas import KnowledgeBundle
+from app.i18n import (
+    LANG_COOKIE,
+    LANG_LABELS,
+    normalize_lang,
+    other_lang,
+    translator,
+)
+from app.prompt import (
+    complete_graph_prompt,
+    complete_prompt,
+    graph_json_schema,
+    json_schema,
+    prompt_catalog,
+    prompt_text,
+)
+from app.schemas import GraphBundle, KnowledgeBundle
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -77,7 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     templates.env.filters["display_datetime"] = display_datetime
     templates.env.filters["display_due"] = lambda value: (
-        display_datetime(value) if value else "Unscheduled"
+        display_datetime(value) if value else ""
     )
 
     @app.middleware("http")
@@ -108,7 +128,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     def render(request: Request, name: str, context: dict | None = None, status_code: int = 200):
-        values = {"request": request, "current_path": request.url.path}
+        lang = normalize_lang(request.cookies.get(LANG_COOKIE))
+        values = {
+            "request": request,
+            "current_path": request.url.path,
+            "t": translator(lang),
+            "lang": lang,
+            "other_lang": other_lang(lang),
+            "lang_labels": LANG_LABELS,
+        }
         if context:
             values.update(context)
         return templates.TemplateResponse(request, name, values, status_code=status_code)
@@ -239,11 +267,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if not raw_data:
                     raise ValueError("file is empty")
                 decoded = json.loads(raw_data)
-                bundle = KnowledgeBundle.model_validate(decoded)
-                count = repository.import_bundle(bundle, filename, raw_data)
-                results.append(
-                    {"status": "success", "name": filename, "message": "Imported", "count": count}
-                )
+                version = decoded.get("schema_version") if isinstance(decoded, dict) else None
+                if version == "2.0":
+                    graph = GraphBundle.model_validate(decoded)
+                    counts = repository.import_graph_bundle(graph, filename, raw_data)
+                    results.append(
+                        {
+                            "status": "success",
+                            "name": filename,
+                            "message": f"Imported graph ({counts['nodes']} nodes, {counts['edges']} edges)",
+                            "count": counts["nodes"],
+                        }
+                    )
+                else:
+                    bundle = KnowledgeBundle.model_validate(decoded)
+                    count = repository.import_bundle(bundle, filename, raw_data)
+                    results.append(
+                        {"status": "success", "name": filename, "message": "Imported", "count": count}
+                    )
             except json.JSONDecodeError as error:
                 results.append(
                     {"status": "error", "name": filename, "message": f"Invalid JSON near line {error.lineno}"}
@@ -268,7 +309,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/prompt", response_class=HTMLResponse)
     async def prompt_page(request: Request):
-        return render(request, "prompt.html", {"prompt": complete_prompt()})
+        return render(request, "prompt.html", {"prompts": prompt_catalog()})
+
+    @app.get("/prompts/{prompt_id}.txt", response_class=PlainTextResponse)
+    async def prompt_library_download(prompt_id: str):
+        text = prompt_text(prompt_id)
+        if text is None:
+            raise HTTPException(status_code=404, detail="unknown prompt")
+        return PlainTextResponse(
+            text,
+            headers={
+                "Content-Disposition": f'attachment; filename="second-brain-{prompt_id}-prompt.txt"'
+            },
+        )
 
     @app.get("/prompt.txt", response_class=PlainTextResponse)
     async def prompt_download():
@@ -283,6 +336,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             json_schema(),
             headers={"Content-Disposition": 'attachment; filename="second-brain-schema.json"'},
         )
+
+    @app.get("/graph", response_class=HTMLResponse)
+    async def graph_page(request: Request):
+        return render(request, "graph.html")
+
+    @app.get("/graph.json", response_class=JSONResponse)
+    async def graph_data():
+        return JSONResponse(repository.graph_payload())
+
+    @app.get("/export/graph.json")
+    async def export_graph(nodes: str = "", depth: int = 3):
+        seeds = [n for n in nodes.split(",") if n] or None
+        depth = max(1, min(depth, 6))
+        bundle = repository.export_graph(seeds=seeds, depth=depth)
+        if bundle is None:
+            raise HTTPException(status_code=404, detail="no graph to export")
+        GraphBundle.model_validate(bundle)  # guard: the export must re-import
+        filename = "second-brain-graph-selection.json" if seeds else "second-brain-graph.json"
+        return Response(
+            json.dumps(bundle, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/nodes/{node_id}", response_class=JSONResponse)
+    async def node_data(node_id: str):
+        detail = repository.node_detail(node_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="node not found")
+        return JSONResponse(detail)
+
+    @app.get("/graph-prompt.txt", response_class=PlainTextResponse)
+    async def graph_prompt_download():
+        return PlainTextResponse(
+            complete_graph_prompt(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-graph-prompt.txt"'
+            },
+        )
+
+    @app.get("/graph-schema.json", response_class=JSONResponse)
+    async def graph_schema_download():
+        return JSONResponse(
+            graph_json_schema(),
+            headers={
+                "Content-Disposition": 'attachment; filename="second-brain-graph-schema.json"'
+            },
+        )
+
+    @app.get("/set-language")
+    async def set_language(request: Request, lang: str = "en", next: str = "/"):
+        code = normalize_lang(lang)
+        # Only allow same-site relative redirect targets (no open redirect).
+        target = next if next.startswith("/") and not next.startswith("//") else "/"
+        response = RedirectResponse(target, status_code=303)
+        response.set_cookie(
+            LANG_COOKIE, code, max_age=31_536_000, samesite="lax", path="/"
+        )
+        return response
 
     @app.get("/ready")
     async def ready():

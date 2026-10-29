@@ -1,19 +1,56 @@
 {% extends "base.html" %}
-{% block title %}AI ingestion prompt · Second Brain{% endblock %}
+{% block title %}AI prompts · Second Brain{% endblock %}
+{% macro prompt_card(p) %}
+<article class="prompt-card" data-prompt-id="{{ p.id }}">
+  <div class="prompt-card-head">
+    <h3>{{ t(p.title) }}</h3>
+    {% set out_labels = {'report': t('Outputs a written report'), 'graph': t('Outputs graph JSON'), 'presentation': t('Outputs a presentation')} %}
+    <span class="prompt-output prompt-output-{{ p.output }}">{{ out_labels[p.output] }}</span>
+  </div>
+  <p>{{ t(p.description) }}</p>
+  <div class="prompt-actions">
+    <button class="button button-dark" type="button" data-reveal aria-expanded="false">{{ t("Reveal prompt") }}</button>
+    <button class="button button-ghost" type="button" data-copy hidden>{{ t("Copy") }}</button>
+    <a class="button button-ghost" href="/prompts/{{ p.id }}.txt" download>{{ t("Download .txt") }}</a>
+    {% if p.schema_url %}<a class="button button-ghost" href="{{ p.schema_url }}">{{ t("JSON Schema") }}</a>{% endif %}
+  </div>
+  <div class="prompt-reveal" hidden><pre class="prompt-body"><code></code></pre></div>
+</article>
+{% endmacro %}
 {% block content %}
 <section class="prompt-page reveal">
   <header class="page-hero compact-hero">
-    <div class="eyebrow"><span>04</span> AI handoff</div>
-    <h1>A contract against<br><em>invented memory.</em></h1>
-    <p class="lede">This prompt separates source facts, general-knowledge explanations, explicit tasks, missing knowledge, and AI advice.</p>
+    <div class="eyebrow"><span>04</span> {{ t("AI handoff") }}</div>
+    <h1>{{ t("Prompts that keep") }}<br><em>{{ t("memory honest.") }}</em></h1>
+    <p class="lede">{{ t("Prepare a source with one of the review prompts, then run the schema generator to produce the graph JSON you import.") }}</p>
   </header>
-  <div class="prompt-toolbar">
-    <div><span class="status-dot"></span> Schema v1.0 · ready to paste</div>
-    <div class="button-group"><button id="copy-prompt" class="button button-dark" type="button" data-copy-target="prompt-text">Copy prompt</button><a class="button button-ghost" href="/prompt.txt">Download .txt</a><a class="button button-ghost" href="/schema.json">JSON Schema</a></div>
-  </div>
-  <div class="prompt-window">
-    <div class="prompt-gutter" aria-hidden="true">PROMPT<br>SCHEMA<br>SOURCE</div>
-    <pre id="prompt-text"><code>{{ prompt }}</code></pre>
+
+  <div class="prompt-library">
+    <section class="prompt-group">
+      <div class="section-heading"><span>01</span><h2>{{ t("Source preparation") }}</h2></div>
+      <p class="prompt-group-note">{{ t("These produce a written report — not JSON. Feed that report into the schema generator.") }}</p>
+      <div class="prompt-cards">
+        {% for p in prompts if p.group == 'prep' %}{{ prompt_card(p) }}{% endfor %}
+      </div>
+    </section>
+
+    <section class="prompt-group">
+      <div class="section-heading"><span>02</span><h2>{{ t("Schema generator") }}</h2></div>
+      <p class="prompt-group-note">{{ t("Turns a prepared report (or raw source) into the graph JSON the app imports.") }}</p>
+      <div class="prompt-cards">
+        {% for p in prompts if p.group == 'schema' %}{{ prompt_card(p) }}{% endfor %}
+      </div>
+    </section>
+
+    <section class="prompt-group">
+      <div class="section-heading"><span>03</span><h2>{{ t("Presentation") }}</h2></div>
+      <p class="prompt-group-note">{{ t("Export the graph as JSON, then turn it into a shareable presentation (single-page HTML, PPTX, or PDF).") }}</p>
+      <div class="prompt-cards">
+        {% for p in prompts if p.group == 'present' %}{{ prompt_card(p) }}{% endfor %}
+      </div>
+    </section>
   </div>
 </section>
+
+<script src="{{ url_for('static', path='/prompts.js') }}" defer></script>
 {% endblock %}
