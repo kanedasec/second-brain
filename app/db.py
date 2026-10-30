@@ -1327,9 +1327,12 @@ class Repository:
     def _stored_graph(self, connection: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:
         node_rows = connection.execute(
             """
-            SELECT id, category, label, description, occurred_at, provenance,
-                   source_type, source_label, metadata_json
-            FROM graph_nodes ORDER BY id
+            SELECT n.id, n.category, n.label, n.description, n.occurred_at,
+                   n.provenance, n.source_type, n.source_label, n.metadata_json,
+                   COALESCE(gi.generated_at, n.updated_at) AS generated_at
+            FROM graph_nodes n
+            LEFT JOIN graph_imports gi ON gi.id = n.import_id
+            ORDER BY n.id
             """
         ).fetchall()
         edge_rows = connection.execute(
@@ -1380,7 +1383,11 @@ class Repository:
             return matches[0] if len(matches) == 1 else fallback
 
         memories = connection.execute(
-            "SELECT id, title, summary, occurred_at, people_json FROM memories"
+            """
+            SELECT m.id, m.title, m.summary, m.occurred_at, m.people_json,
+                   COALESCE(i.generated_at, m.created_at) AS generated_at
+            FROM memories m JOIN imports i ON i.id = m.import_id
+            """
         ).fetchall()
         for memory in memories:
             mem_id = f"mem:{memory['id']}"
@@ -1390,6 +1397,7 @@ class Repository:
                 "label": memory["title"],
                 "description": memory["summary"],
                 "occurred_at": memory["occurred_at"],
+                "generated_at": memory["generated_at"],
                 "provenance": "source",
                 "record_id": memory["id"],
                 "origin": "memory",

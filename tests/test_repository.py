@@ -295,6 +295,35 @@ def test_graph_payload_projects_v1_memories(settings, example_bundle):
     assert any(edge["label"] == "about" for edge in payload["edges"])
 
 
+def test_graph_nodes_carry_generation_date(settings, example_bundle, example_graph):
+    """Every memory and stored graph node exposes a generation date so the
+    graph timeline can filter by when a node was captured even when the source
+    stated no event date."""
+    repository = Repository(settings.database_path)
+    repository.initialize()
+    repository.import_bundle(
+        KnowledgeBundle.model_validate(example_bundle),
+        "mem.json",
+        json.dumps(example_bundle).encode(),
+    )
+    repository.import_graph_bundle(
+        GraphBundle.model_validate(example_graph),
+        "graph.json",
+        json.dumps(example_graph).encode(),
+    )
+    nodes = {node["id"]: node for node in repository.graph_payload()["nodes"]}
+
+    # Projected memory node: generation date is the bundle's generated_at (UTC).
+    memory_id = example_bundle["memories"][0]["id"]
+    memory_node = nodes[f"mem:{memory_id}"]
+    assert memory_node["generated_at"] == "2026-10-28T22:00:00Z"
+
+    # Stored graph node: also carries a generation date for the timeline.
+    stored = next(node for node in nodes.values() if node.get("origin") == "graph")
+    assert stored["generated_at"]
+    assert stored["generated_at"][:4] == "2026"
+
+
 def test_unified_atlas_populates_every_repository_surface(settings, example_atlas):
     repository = Repository(settings.database_path)
     repository.initialize()

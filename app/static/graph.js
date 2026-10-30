@@ -109,7 +109,12 @@
   const allNodesById = new Map();
 
   function nodeDateKey(node) {
-    const value = node?.occurred_at;
+    // Effective timeline date: the event date (`occurred_at`) when the source
+    // stated one, otherwise the generation date (`generated_at`, when the atlas
+    // that captured this node was produced). Sources rarely carry explicit
+    // event dates, so the generation date keeps the timeline usable instead of
+    // leaving every node undated.
+    const value = node?.occurred_at || node?.generated_at;
     const match = typeof value === 'string' ? value.match(/^(\d{4}-\d{2}-\d{2})/) : null;
     return match ? match[1] : null;
   }
