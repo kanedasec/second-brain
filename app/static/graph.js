@@ -18,6 +18,12 @@
   const exportDepth = document.getElementById('graph-export-depth');
   const exportGo = document.getElementById('graph-export-go');
   const exportClear = document.getElementById('graph-export-clear');
+  const dateBar = document.querySelector('.graph-timebar');
+  const dateFromInput = document.getElementById('graph-date-from');
+  const dateToInput = document.getElementById('graph-date-to');
+  const dateContextInput = document.getElementById('graph-date-context');
+  const dateStatus = document.getElementById('graph-date-status');
+  const datePresetButtons = [...document.querySelectorAll('[data-date-preset]')];
 
   const PROGRESSIVE_CAP = 400; // nodes shown before progressive disclosure kicks in
 
@@ -66,6 +72,11 @@
       'In export set': 'No conjunto de exportação',
       'selected': 'selecionado(s)',
       'Concluded': 'Concluída',
+      'All dates': 'Todas as datas',
+      'nodes': 'nós',
+      'Dated': 'Datados',
+      'Context': 'Contexto',
+      'Start date must be before end date.': 'A data inicial deve ser anterior à data final.',
     },
   };
   const tr = (s) => (STR[LANG] && STR[LANG][s]) || s;
@@ -90,11 +101,55 @@
   const exportSet = new Set(); // nodes chosen for a subgraph export
   let progThreshold = 0; // min degree to show when progressively disclosed
   let showAllNodes = false;
+  let dateFrom = '';
+  let dateTo = '';
+  let dateInvalid = false;
+  let dateContextIds = new Set();
+
+  const allNodesById = new Map();
+
+  function nodeDateKey(node) {
+    const value = node?.occurred_at;
+    const match = typeof value === 'string' ? value.match(/^(\d{4}-\d{2}-\d{2})/) : null;
+    return match ? match[1] : null;
+  }
+
+  const dateFilterActive = () => Boolean(dateFrom || dateTo);
+
+  function nodeInDateRange(node) {
+    const key = nodeDateKey(node);
+    if (!key) return false;
+    return (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
+  }
+
+  function recomputeDateContext() {
+    dateContextIds = new Set();
+    if (!dateFilterActive() || dateInvalid || !dateContextInput?.checked) return;
+    const datedIds = new Set(
+      [...allNodesById.values()].filter(nodeInDateRange).map((node) => node.id),
+    );
+    for (const link of Graph.graphData().links) {
+      if (!showAi && link.provenance === 'ai_inferred') continue;
+      const sourceId = idOf(link.source);
+      const targetId = idOf(link.target);
+      const source = allNodesById.get(sourceId);
+      const target = allNodesById.get(targetId);
+      if (datedIds.has(sourceId) && target && !nodeDateKey(target)) dateContextIds.add(targetId);
+      if (datedIds.has(targetId) && source && !nodeDateKey(source)) dateContextIds.add(sourceId);
+    }
+  }
+
+  function dateAllows(node) {
+    if (!dateFilterActive() || dateInvalid) return true;
+    if (nodeInDateRange(node)) return true;
+    return !nodeDateKey(node) && dateContextIds.has(node.id);
+  }
 
   const matches = (node) =>
     !searchTerm || (node.label || '').toLowerCase().includes(searchTerm);
 
   function nodeVisible(node) {
+    if (!dateAllows(node)) return false;
     if (hiddenCats.has(node.category)) return false;
     if (isolateId && node.id !== isolateId && !isolateSet.has(node.id)) return false;
     if (progThreshold && !showAllNodes && !isolateId && (node.__degree || 0) < progThreshold) {
@@ -232,8 +287,6 @@
     })
     .onBackgroundClick(() => clearSelection());
 
-  const allNodesById = new Map();
-
   function sizeToContainer() {
     Graph.width(mount.clientWidth).height(mount.clientHeight);
   }
@@ -286,8 +339,12 @@
 
   function neighborMarkup(detail) {
     if (!detail.neighbors || !detail.neighbors.length) return '';
-    const items = detail.neighbors
-      .filter((n) => n.node)
+    const visibleNeighbors = detail.neighbors.filter((n) => {
+      const node = n.node && allNodesById.get(n.node.id);
+      return node && nodeVisible(node);
+    });
+    if (!visibleNeighbors.length) return '';
+    const items = visibleNeighbors
       .map((n) => {
         const arrow = n.direction === 'out' ? '→' : '←';
         return `<li><button type="button" class="node-link" data-id="${escapeHtml(n.node.id)}">
@@ -297,7 +354,7 @@
         </button></li>`;
       })
       .join('');
-    return `<h3 class="panel-subhead">${tr('Connections')} <span>${detail.neighbors.length}</span></h3>
+    return `<h3 class="panel-subhead">${tr('Connections')} <span>${visibleNeighbors.length}</span></h3>
             <ul class="node-links">${items}</ul>`;
   }
 
@@ -428,6 +485,77 @@
     else searchCount.textContent = `${n} ${n === 1 ? tr('match') : tr('matches')}`;
   }
 
+  function setActiveDatePreset(value) {
+    datePresetButtons.forEach((button) => {
+      const active = button.dataset.datePreset === value;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  function localDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  function updateDateStatus() {
+    if (!dateStatus) return;
+    dateBar?.classList.toggle('is-active', dateFilterActive() && !dateInvalid);
+    dateFromInput?.setAttribute('aria-invalid', String(dateInvalid));
+    dateToInput?.setAttribute('aria-invalid', String(dateInvalid));
+    if (dateInvalid) {
+      dateStatus.textContent = tr('Start date must be before end date.');
+      dateStatus.classList.add('is-error');
+      return;
+    }
+    dateStatus.classList.remove('is-error');
+    if (!dateFilterActive()) {
+      dateStatus.textContent = `${tr('All dates')} · ${allNodesById.size} ${tr('nodes')}`;
+      return;
+    }
+    const dated = [...allNodesById.values()].filter(nodeInDateRange).length;
+    const context = dateContextInput?.checked ? dateContextIds.size : 0;
+    dateStatus.textContent = `${tr('Dated')}: ${dated} · ${tr('Context')}: ${context}`;
+  }
+
+  function applyDateFilter({ fit = true } = {}) {
+    dateFrom = dateFromInput?.value || '';
+    dateTo = dateToInput?.value || '';
+    dateInvalid = Boolean(dateFrom && dateTo && dateFrom > dateTo);
+    recomputeDateContext();
+    if (selectedId && !dateAllows(allNodesById.get(selectedId))) clearSelection();
+    if (isolateId && !dateAllows(allNodesById.get(isolateId))) {
+      isolateId = null;
+      isolateSet = new Set();
+    }
+    updateDateStatus();
+    refresh();
+    updateSearchCount();
+    if (fit && allNodesById.size && !dateInvalid) {
+      requestAnimationFrame(() => Graph.zoomToFit(CAM, 60, nodeVisible));
+    }
+  }
+
+  function chooseDatePreset(value) {
+    if (!dateFromInput || !dateToInput) return;
+    if (value === 'all') {
+      dateFromInput.value = '';
+      dateToInput.value = '';
+    } else {
+      const end = new Date();
+      end.setHours(12, 0, 0, 0);
+      const start = new Date(end);
+      const days = value === 'today' ? 1 : Number.parseInt(value, 10);
+      start.setDate(start.getDate() - Math.max(days - 1, 0));
+      dateFromInput.value = localDateKey(start);
+      dateToInput.value = localDateKey(end);
+    }
+    setActiveDatePreset(value);
+    applyDateFilter();
+  }
+
   searchInput?.addEventListener('input', () => {
     searchTerm = searchInput.value.trim().toLowerCase();
     refresh();
@@ -441,7 +569,21 @@
     }
   });
 
-  aiToggle?.addEventListener('change', () => { showAi = aiToggle.checked; refresh(); });
+  aiToggle?.addEventListener('change', () => {
+    showAi = aiToggle.checked;
+    applyDateFilter({ fit: false });
+  });
+
+  datePresetButtons.forEach((button) => {
+    button.addEventListener('click', () => chooseDatePreset(button.dataset.datePreset));
+  });
+  [dateFromInput, dateToInput].forEach((input) => {
+    input?.addEventListener('change', () => {
+      setActiveDatePreset(null);
+      applyDateFilter();
+    });
+  });
+  dateContextInput?.addEventListener('change', () => applyDateFilter());
 
   exportDepth?.addEventListener('input', updateExportBar);
   exportGo?.addEventListener('click', () => { if (exportGo) exportGo.href = exportHref(); });
@@ -460,6 +602,14 @@
     isolateId = null;
     isolateSet = new Set();
     showAllNodes = false;
+    if (dateFromInput) dateFromInput.value = '';
+    if (dateToInput) dateToInput.value = '';
+    if (dateContextInput) dateContextInput.checked = true;
+    dateFrom = '';
+    dateTo = '';
+    dateInvalid = false;
+    dateContextIds = new Set();
+    setActiveDatePreset('all');
     exportSet.clear();
     updateExportBar();
     clearSelection();
@@ -468,6 +618,7 @@
       b.classList.remove('is-off');
     });
     updateProgButton();
+    updateDateStatus();
     refresh();
     updateSearchCount();
     Graph.zoomToFit(CAM, 60);
@@ -506,6 +657,8 @@
         if (s) s.__degree += 1;
         if (t) t.__degree += 1;
       }
+      recomputeDateContext();
+      updateDateStatus();
       // Progressive disclosure: for large graphs, start with the highest-degree
       // nodes (capped), and expose "show all" to reveal the rest.
       if (data.nodes.length > PROGRESSIVE_CAP) {

@@ -680,6 +680,68 @@ a.tag:hover { border-color: var(--blue); color: var(--blue); box-shadow: var(--g
 .graph-ai-toggle input { accent-color: var(--magenta); width: 15px; height: 15px; }
 .graph-toolbar .button { min-height: 38px; }
 
+/* Temporal graph rail */
+.graph-timebar {
+  margin: -2px 0 14px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  background:
+    linear-gradient(90deg, rgb(0 230 255 / 8%), transparent 28%),
+    rgb(12 12 22 / 78%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  transition: border-color .2s, box-shadow .2s;
+}
+.graph-timebar.is-active { border-left-color: var(--yellow); box-shadow: inset 16px 0 28px -26px var(--yellow); }
+.graph-timebar-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
+.graph-timebar-title, .graph-date-status { margin: 0; font-family: var(--mono); font-size: .61rem; text-transform: uppercase; letter-spacing: .12em; }
+.graph-timebar-title { color: var(--blue); }
+.graph-timebar-title span { display: inline-block; margin-right: 5px; color: var(--yellow); font-size: .88rem; }
+.graph-date-status { color: var(--muted); text-align: right; }
+.graph-date-status.is-error { color: var(--red); }
+.graph-timebar-controls { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+.graph-date-presets { display: flex; align-items: stretch; gap: 4px; }
+.graph-date-preset {
+  min-height: 44px; padding: 0 11px; border: 1px solid var(--line-dark);
+  background: rgb(0 0 0 / 20%); color: var(--muted); cursor: pointer;
+  font-family: var(--mono); font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+}
+.graph-date-preset:hover { color: var(--ink); border-color: var(--blue); }
+.graph-date-preset.is-active { color: #06080b; border-color: var(--yellow); background: var(--yellow); box-shadow: var(--glow-yellow); }
+.graph-date-preset:focus-visible, .graph-date-range input:focus-visible, .graph-context-toggle:focus-within { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.graph-date-range { display: flex; align-items: end; gap: 8px; }
+.graph-date-range > span { min-height: 44px; display: grid; place-items: center; color: var(--blue); }
+.graph-date-range label { color: var(--muted); font-family: var(--mono); font-size: .57rem; text-transform: uppercase; letter-spacing: .1em; }
+.graph-date-range input {
+  display: block; min-width: 142px; min-height: 44px; margin-top: 4px; padding: 0 9px;
+  border: 1px solid var(--line-dark); background: var(--panel-2); color: var(--ink);
+  color-scheme: dark; font-family: var(--mono); font-size: .73rem;
+}
+.graph-date-range input[aria-invalid="true"] { border-color: var(--red); box-shadow: 0 0 0 1px rgb(255 51 102 / 28%); }
+.graph-context-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px;
+  border: 1px solid transparent; color: var(--muted); cursor: pointer;
+  font-family: var(--mono); font-size: .61rem; text-transform: uppercase; letter-spacing: .07em;
+}
+.graph-context-toggle input { width: 17px; height: 17px; accent-color: var(--blue); }
+
+@media (max-width: 900px) {
+  .graph-timebar-controls { display: grid; grid-template-columns: 1fr auto; align-items: end; }
+  .graph-date-presets { grid-column: 1 / -1; }
+  .graph-context-toggle { justify-self: end; }
+}
+
+@media (max-width: 640px) {
+  .graph-timebar { padding-inline: 10px; }
+  .graph-timebar-head { align-items: flex-start; }
+  .graph-date-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 100%; gap: 3px; }
+  .graph-date-preset { padding-inline: 4px; font-size: .55rem; letter-spacing: .03em; }
+  .graph-timebar-controls { grid-template-columns: 1fr; }
+  .graph-date-range { display: grid; grid-template-columns: 1fr auto 1fr; width: 100%; }
+  .graph-date-range input { width: 100%; min-width: 0; }
+  .graph-context-toggle { justify-self: stretch; }
+}
+
 /* Legend as interactive category filters */
 .legend-item {
   display: flex; align-items: center; gap: 8px; width: 100%;

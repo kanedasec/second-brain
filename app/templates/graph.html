@@ -20,6 +20,31 @@
     <button type="button" id="graph-reset" class="button button-ghost">{{ t("Reset") }}</button>
   </div>
 
+  <section class="graph-timebar" aria-labelledby="graph-time-heading">
+    <div class="graph-timebar-head">
+      <p id="graph-time-heading" class="graph-timebar-title"><span aria-hidden="true">◷</span> {{ t("Temporal view") }}</p>
+      <output id="graph-date-status" class="graph-date-status" aria-live="polite">{{ t("All dates") }}</output>
+    </div>
+    <div class="graph-timebar-controls">
+      <div class="graph-date-presets" role="group" aria-label="{{ t('Date presets') }}">
+        <button type="button" class="graph-date-preset is-active" data-date-preset="all" aria-pressed="true">{{ t("All") }}</button>
+        <button type="button" class="graph-date-preset" data-date-preset="today" aria-pressed="false">{{ t("Today") }}</button>
+        <button type="button" class="graph-date-preset" data-date-preset="7" aria-pressed="false">{{ t("7 days") }}</button>
+        <button type="button" class="graph-date-preset" data-date-preset="30" aria-pressed="false">{{ t("30 days") }}</button>
+        <button type="button" class="graph-date-preset" data-date-preset="90" aria-pressed="false">{{ t("90 days") }}</button>
+      </div>
+      <div class="graph-date-range">
+        <label>{{ t("From") }} <input id="graph-date-from" type="date"></label>
+        <span aria-hidden="true">→</span>
+        <label>{{ t("To") }} <input id="graph-date-to" type="date"></label>
+      </div>
+      <label class="graph-context-toggle">
+        <input id="graph-date-context" type="checkbox" checked>
+        <span>{{ t("Include connected undated context") }}</span>
+      </label>
+    </div>
+  </section>
+
   <div class="graph-stage">
     <div id="graph-canvas" class="graph-canvas" role="application"
          aria-label="{{ t('Interactive force-directed knowledge graph. Drag to move nodes, scroll to zoom, click a node for details.') }}"></div>
