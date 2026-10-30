@@ -339,6 +339,19 @@ def test_graph_page_loads_viewer(client):
     assert 'id="graph-search-input"' in response.text
     assert 'id="graph-ai-toggle"' in response.text
     assert 'id="graph-reset"' in response.text
+    assert 'id="graph-date-from"' in response.text
+    assert 'id="graph-date-to"' in response.text
+    assert 'id="graph-date-context"' in response.text
+    assert 'data-date-preset="90"' in response.text
+
+
+def test_graph_date_filter_controls_are_translated(client):
+    client.get("/set-language", params={"lang": "pt-BR", "next": "/graph"})
+    page = client.get("/graph")
+    assert page.status_code == 200
+    assert "Visão temporal" in page.text
+    assert "Todas as datas" in page.text
+    assert "Incluir contexto conectado sem data" in page.text
 
 
 def test_language_toggle_sets_cookie_and_translates(client, example_bundle):
