@@ -123,19 +123,34 @@
   }
 
   function recomputeDateContext() {
+    // Seed from the dated nodes inside the window, then walk outward through
+    // undated nodes only, collecting the full reachable neighborhood. Other
+    // dated nodes (outside the window, or inside it) act as walls, so one
+    // period's context never leaks across a memory into another period.
     dateContextIds = new Set();
     if (!dateFilterActive() || dateInvalid || !dateContextInput?.checked) return;
-    const datedIds = new Set(
-      [...allNodesById.values()].filter(nodeInDateRange).map((node) => node.id),
-    );
+    const adjacency = new Map();
     for (const link of Graph.graphData().links) {
       if (!showAi && link.provenance === 'ai_inferred') continue;
       const sourceId = idOf(link.source);
       const targetId = idOf(link.target);
-      const source = allNodesById.get(sourceId);
-      const target = allNodesById.get(targetId);
-      if (datedIds.has(sourceId) && target && !nodeDateKey(target)) dateContextIds.add(targetId);
-      if (datedIds.has(targetId) && source && !nodeDateKey(source)) dateContextIds.add(sourceId);
+      if (!adjacency.has(sourceId)) adjacency.set(sourceId, []);
+      if (!adjacency.has(targetId)) adjacency.set(targetId, []);
+      adjacency.get(sourceId).push(targetId);
+      adjacency.get(targetId).push(sourceId);
+    }
+    const queue = [...allNodesById.values()].filter(nodeInDateRange).map((node) => node.id);
+    const seen = new Set(queue);
+    while (queue.length) {
+      const id = queue.shift();
+      for (const next of adjacency.get(id) || []) {
+        if (seen.has(next)) continue;
+        seen.add(next);
+        const node = allNodesById.get(next);
+        if (!node || nodeDateKey(node)) continue; // stop at dated nodes
+        dateContextIds.add(next);
+        queue.push(next);
+      }
     }
   }
 
